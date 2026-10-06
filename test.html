@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <div id="messages" style="padding: 20px;"></div>
+  <script>
+    const ui = { messages: document.getElementById('messages') };
+    const currentContext = {};
+    
+    // Paste appendMessage from panel.js
+    const code = `
+    function appendMessage(message) {
+      const article = document.createElement("article");
+      article.className = "relay-ai-message relay-ai-message-" + message.role;
+
+      const label = document.createElement("div");
+      label.className = "relay-ai-message-label";
+
+      const author = document.createElement("span");
+      author.textContent = message.role === "user" ? "You" : "✦ Relay AI";
+
+      const contextLabel = document.createElement("span");
+      contextLabel.className = "relay-ai-message-context";
+
+      if (message.context) {
+        let description = "";
+        try {
+          description = message.context.pageType || "";
+        } catch {
+          description = "";
+        }
+        contextLabel.textContent = message.context.owner ? (message.context.owner + "/" + message.context.repository) : "";
+      }
+
+      label.append(author, contextLabel);
+
+      const body = document.createElement("p");
+      body.className = "relay-ai-message-body";
+      body.textContent = message.text;
+
+      article.append(label, body);
+
+      if (message.model && message.role === "assistant") {
+        const modelInfo = document.createElement("div");
+        modelInfo.className = "relay-ai-message-model";
+        modelInfo.style.fontSize = "11px";
+        modelInfo.style.color = "rgba(255, 255, 255, 0.4)";
+        modelInfo.style.marginTop = "6px";
+        modelInfo.style.textAlign = "left";
+        modelInfo.textContent = "Model: " + message.model;
+        article.append(modelInfo);
+      }
+
+      if (message.issuePlan && message.issuePlan.issues && message.issuePlan.issues.length) {
+        const planContainer = document.createElement("div");
+        planContainer.className = "relay-ai-issue-plan";
+
+        const planTitle = document.createElement("h4");
+        planTitle.className = "relay-ai-issue-plan-title";
+        planTitle.textContent = "Proposed GitHub Issues";
+        planContainer.append(planTitle);
+
+        for (const issue of message.issuePlan.issues) {
+          const card = document.createElement("div");
+          card.className = "relay-ai-issue-card";
+
+          const header = document.createElement("div");
+          header.className = "relay-ai-issue-header";
+
+          const title = document.createElement("h5");
+          title.className = "relay-ai-issue-title";
+          title.textContent = issue.title || "Untitled Issue";
+
+          header.append(title);
+
+          const body = document.createElement("p");
+          body.className = "relay-ai-issue-desc";
+          body.textContent = issue.body || "";
+
+          card.append(header, body);
+          planContainer.append(card);
+        }
+
+        const actions = document.createElement("div");
+        actions.className = "relay-ai-issue-actions";
+
+        const cancelBtn = document.createElement("button");
+        cancelBtn.className = "relay-ai-btn relay-ai-btn-secondary";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.type = "button";
+        
+        const createBtn = document.createElement("button");
+        createBtn.className = "relay-ai-btn relay-ai-btn-primary";
+        const numIssues = message.issuePlan.issues.length;
+        createBtn.textContent = \`Create \${numIssues} Issue\${numIssues === 1 ? '' : 's'}\`;
+        createBtn.type = "button";
+
+        const infoMsg = document.createElement("div");
+        infoMsg.className = "relay-ai-issue-info";
+        infoMsg.textContent = "GitHub Issue creation will be available in the next step.";
+        infoMsg.hidden = true;
+
+        actions.append(cancelBtn, createBtn);
+        planContainer.append(actions, infoMsg);
+
+        article.append(planContainer);
+      }
+
+      ui.messages.append(article);
+    }
+    `;
+    
+    eval(code);
+    
+    appendMessage({
+      role: 'assistant',
+      text: 'I prepared 1 proposed GitHub Issue for your review. Nothing has been created yet.',
+      model: 'gemini-3.8-flash',
+      issuePlan: {
+        issues: [{ title: 'Fix bug', body: 'This is a bug' }]
+      }
+    });
+  </script>
+</body>
+</html>

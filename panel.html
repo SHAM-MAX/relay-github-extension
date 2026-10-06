@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+
+  <title>Relay AI — GitHub Assistant</title>
+
+  <link rel="stylesheet" href="panel.css">
+
+  <script defer src="context.js"></script>
+  <script defer src="assistant-client.js"></script>
+  <script defer src="panel.js"></script>
+</head>
+
+<body>
+
+  <div class="relay-ai-shell">
+
+    <!-- =====================================================
+         TOP HEADER
+         ===================================================== -->
+
+    <header class="relay-ai-header">
+
+      <div class="relay-ai-brand">
+
+        <div
+          class="relay-ai-mark"
+          aria-hidden="true"
+        >
+        </div>
+
+        <h1>
+          Relay AI
+        </h1>
+
+      </div>
+
+
+      <!-- ===================================================
+           HEADER ACTIONS
+           =================================================== -->
+
+      <div class="relay-ai-header-actions">
+
+        <!-- GitHub / Repository selector -->
+
+        <button
+          id="relay-ai-refresh"
+          class="relay-ai-repository-button"
+          type="button"
+          aria-label="Select GitHub repository"
+          title="Select GitHub repository"
+        >
+
+          <svg
+            width="31"
+            height="31"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M12 .7a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.33-1.76-1.33-1.76-1.09-.75.08-.73.08-.73 1.2.09 1.83 1.23 1.83 1.23 1.07 1.83 2.8 1.3 3.49.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.94 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.17 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6-.01c2.29-1.55 3.29-1.23 3.29-1.23.65 1.65.24 2.87.12 3.17.77.84 1.23 1.91 1.23 3.22 0 4.61-2.8 5.63-5.48 5.93.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .7Z"/>
+          </svg>
+
+          <span
+            id="relay-ai-repository"
+            class="relay-ai-repository-name"
+          >
+            Repository
+          </span>
+
+          <svg
+            class="relay-ai-repository-chevron"
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path d="m6 9 6 6 6-6"/>
+          </svg>
+
+        </button>
+
+        <!-- Close -->
+
+        <button
+          id="relay-ai-close"
+          class="relay-ai-header-action"
+          type="button"
+          aria-label="Close Relay"
+          title="Close Relay"
+        >
+
+          <svg
+            width="31"
+            height="31"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            aria-hidden="true"
+          >
+            <path d="M6 6l12 12"/>
+            <path d="M18 6L6 18"/>
+          </svg>
+
+        </button>
+
+      </div>
+
+    </header>
+
+
+    <!-- =====================================================
+         HIDDEN GITHUB CONTEXT
+         
+         Kept for existing panel.js functionality.
+         It does NOT occupy visual space.
+         ===================================================== -->
+
+    <section
+      class="relay-ai-context"
+      aria-label="Current GitHub context"
+      hidden
+    >
+
+      <div class="relay-ai-context-top">
+
+        <span class="relay-ai-eyebrow">
+          REPOSITORY
+        </span>
+
+        <button
+          id="relay-ai-context-refresh"
+          class="relay-ai-icon-button"
+          type="button"
+          title="Refresh GitHub context"
+          aria-label="Refresh GitHub context"
+        >
+          ↻
+        </button>
+
+      </div>
+
+
+      <p
+        id="relay-ai-repository-hidden"
+        class="relay-ai-repository"
+      >
+        Detecting GitHub context…
+      </p>
+
+
+      <div class="relay-ai-context-row">
+
+        <span>
+          Context
+        </span>
+
+        <strong id="relay-ai-page">
+          Connecting…
+        </strong>
+
+      </div>
+
+
+      <div
+        id="relay-ai-branch-row"
+        class="relay-ai-context-row"
+        hidden
+      >
+
+        <span>
+          Branch
+        </span>
+
+        <strong id="relay-ai-branch"></strong>
+
+      </div>
+
+
+      <details class="relay-ai-details">
+
+        <summary>
+          Page details
+          <span id="relay-ai-host"></span>
+        </summary>
+
+        <pre id="relay-ai-context-json">null</pre>
+
+      </details>
+
+    </section>
+
+
+    <!-- =====================================================
+         MAIN CONVERSATION
+         ===================================================== -->
+
+    <main
+      id="relay-ai-conversation"
+      class="relay-ai-conversation"
+    >
+
+      <!-- ===================================================
+           WELCOME
+           =================================================== -->
+
+      <section
+        id="relay-ai-empty"
+        class="relay-ai-empty"
+      >
+
+        <div class="relay-ai-empty-content">
+
+          <span class="relay-ai-eyebrow">
+            YOUR PROJECT, IN FOCUS
+          </span>
+
+          <h2>
+            What can I help<br>
+            you with?
+          </h2>
+
+        </div>
+
+
+        <!-- Existing prompts.
+             Hidden visually by CSS but retained for JS. -->
+
+        <div
+          class="relay-ai-suggestions"
+          aria-label="Example messages"
+        >
+
+          <button
+            type="button"
+            data-relay-prompt="Help me understand this repository."
+          >
+            <span>
+              Understand this repository
+            </span>
+
+            <span aria-hidden="true">
+              ↗
+            </span>
+          </button>
+
+
+          <button
+            type="button"
+            data-relay-prompt="Help me plan the next steps for this task."
+          >
+            <span>
+              Plan the next steps
+            </span>
+
+            <span aria-hidden="true">
+              ↗
+            </span>
+          </button>
+
+
+          <button
+            type="button"
+            data-relay-prompt="Help me review this issue or pull request."
+          >
+            <span>
+              Review an issue or pull request
+            </span>
+
+            <span aria-hidden="true">
+              ↗
+            </span>
+          </button>
+
+        </div>
+
+      </section>
+
+
+      <!-- ===================================================
+           CHAT MESSAGES
+           =================================================== -->
+
+      <div
+        id="relay-ai-messages"
+        class="relay-ai-messages"
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-label="Conversation"
+      ></div>
+
+
+      <!-- ===================================================
+           LOADING
+           =================================================== -->
+
+      <div
+        id="relay-ai-loading"
+        class="relay-ai-loading"
+        role="status"
+        hidden
+      >
+
+        <span
+          class="relay-ai-spinner"
+          aria-hidden="true"
+        ></span>
+
+        Waiting for Relay AI…
+
+      </div>
+
+    </main>
+
+
+    <!-- =====================================================
+         FOOTER / COMPOSER
+         ===================================================== -->
+
+    <footer class="relay-ai-footer">
+
+      <!-- Context error -->
+
+      <div
+        id="relay-ai-context-error"
+        class="relay-ai-error"
+        role="alert"
+        hidden
+      ></div>
+
+
+      <!-- General error -->
+
+      <div
+        id="relay-ai-error"
+        class="relay-ai-error"
+        role="alert"
+        hidden
+      ></div>
+
+
+      <!-- ===================================================
+           MESSAGE COMPOSER
+           =================================================== -->
+
+      <form
+        id="relay-ai-form"
+        class="relay-ai-composer"
+      >
+
+        <label
+          for="relay-ai-input"
+          class="relay-ai-sr-only"
+        >
+          Message Relay
+        </label>
+
+
+        <!-- Message -->
+
+        <textarea
+          id="relay-ai-input"
+          rows="3"
+          maxlength="8000"
+          placeholder="Ask Relay about this repository, issue, pull request, task, or project..."
+          aria-describedby="relay-ai-demo-note relay-ai-shortcut"
+        ></textarea>
+
+
+        <!-- Selected attachments -->
+
+        <ul
+          id="relay-ai-attachments"
+          class="relay-ai-attachments"
+          aria-label="Selected files"
+        ></ul>
+
+
+        <!-- Composer controls -->
+
+        <div class="relay-ai-composer-tools">
+
+          <input
+            id="relay-ai-file"
+            type="file"
+            multiple
+            hidden
+          />
+
+
+          <!-- Attach -->
+
+          <button
+            id="relay-ai-attach"
+            type="button"
+            class="relay-ai-attach"
+            title="Attach files (names only; nothing uploaded)"
+          >
+
+            <svg
+              width="31"
+              height="31"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              aria-hidden="true"
+            >
+              <path d="m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l9-9a2 2 0 0 1 3 3l-9 9a1 1 0 0 0 2 2l7-7"/>
+            </svg>
+
+            <span>
+              Attach file
+            </span>
+
+          </button>
+
+
+          <!-- Character count -->
+
+          <span
+            id="relay-ai-count"
+            class="relay-ai-count"
+          >
+            0 / 4,000
+          </span>
+
+
+          <!-- Model Selector -->
+          <select
+            id="relay-ai-model-selector"
+            class="relay-ai-model-select"
+            aria-label="Select AI Model"
+            title="Select AI Model"
+          >
+            <optgroup label="Auto">
+              <option value="auto">Auto — Recommended</option>
+            </optgroup>
+            <optgroup label="Groq">
+              <option value="openai/gpt-oss-120b">Groq — GPT-OSS 120B</option>
+              <option value="openai/gpt-oss-20b">Groq — GPT-OSS 20B</option>
+            </optgroup>
+            <optgroup label="OpenRouter">
+              <option value="qwen/qwen3.5-397b-a17b">OpenRouter — Qwen</option>
+              <option value="openrouter/free">OpenRouter — Free</option>
+            </optgroup>
+            <optgroup label="Gemini">
+              <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
+              <option value="gemini-3.7-flash">Gemini 3.7 Flash</option>
+              <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+              <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+            </optgroup>
+          </select>
+
+
+          <!-- Send -->
+
+          <button
+            id="relay-ai-send"
+            class="relay-ai-send"
+            type="submit"
+            aria-label="Send message"
+            disabled
+          >
+
+            <svg
+              width="30"
+              height="30"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <path d="M12 19V5"/>
+              <path d="m6 11 6-6 6 6"/>
+            </svg>
+
+          </button>
+
+        </div>
+
+      </form>
+
+
+      <!-- Keyboard shortcut -->
+
+      <p
+        id="relay-ai-shortcut"
+        class="relay-ai-shortcut"
+      >
+        Enter to send
+        <span>·</span>
+        Shift + Enter for a new line
+      </p>
+
+
+      <!-- Bottom note -->
+
+      <p
+        id="relay-ai-demo-note"
+        class="relay-ai-demo-note"
+      >
+
+        Messages sent to Relay
+
+        <span>
+          •
+        </span>
+
+        Files stay local
+
+        <span>
+          •
+        </span>
+
+        <a
+          id="relay-ai-connect"
+          href="https://relay-standalone-backend.onrender.com/extension-connect"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Connect Relay
+        </a>
+
+      </p>
+
+    </footer>
+
+  </div>
+
+</body>
+</html>
