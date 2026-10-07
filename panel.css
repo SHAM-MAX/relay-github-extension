@@ -896,15 +896,16 @@ textarea:focus-visible {
 /* Subviews */
 .relay-ai-subview {
   position: absolute;
-  top: 60px; /* Below header */
+  top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: var(--relay-ai-bg);
+  background: var(--bg);
   z-index: 50;
   display: flex;
   flex-direction: column;
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
+  pointer-events: auto;
 }
 .relay-ai-subview.hidden {
   transform: translateX(100%);

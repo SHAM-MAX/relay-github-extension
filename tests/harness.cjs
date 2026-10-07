@@ -11,20 +11,61 @@ class Element {
     this.hidden = false; this.disabled = false; this.scrollHeight = 500;
     this.style = {};
   }
+  contains(el) { return this === el || this.children.some(c => c.contains(el)); }
+  get textContent() {
+    return this._textContent || this.children.map(c => c.textContent).join('');
+  }
+  set textContent(val) {
+    this._textContent = val;
+    if (val) this.children = [];
+  }
+  get className() { return this.getAttribute('class') || ''; }
+  set className(val) { this.setAttribute('class', val); }
+  get classList() {
+    const self = this;
+    return {
+      contains(cls) { return self.className.split(/\s+/).includes(cls); },
+      add(cls) { const classes = new Set(self.className.split(/\s+/).filter(Boolean)); classes.add(cls); self.className = [...classes].join(' '); },
+      remove(cls) { const classes = new Set(self.className.split(/\s+/).filter(Boolean)); classes.delete(cls); self.className = [...classes].join(' '); },
+      toggle(cls) { if (this.contains(cls)) this.remove(cls); else this.add(cls); }
+    };
+  }
   append(...elements) { for (const el of elements) { el.parent = this; this.children.push(el); } }
+  appendChild(el) { this.append(el); return el; }
   replaceChildren(...elements) { this.children = []; this.append(...elements); }
   setAttribute(key, value) { this.attributes[key] = value; }
   getAttribute(key) { return this.attributes[key]; }
   addEventListener(type, callback) { (this.handlers[type] ||= []).push(callback); }
   removeEventListener(type, callback) { this.handlers[type] = (this.handlers[type] || []).filter(fn => fn !== callback); }
   async emit(type, detail = {}) {
-    const event = { preventDefault() {}, ...detail };
+    const event = { preventDefault() {}, stopPropagation() {}, ...detail };
     for (const callback of this.handlers[type] || []) await callback(event);
   }
   click() { return this.emit('click'); }
   focus() { this.focused = true; }
   requestSubmit() { return this.emit('submit'); }
   remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
+  querySelectorAll(selector) {
+    if (selector.startsWith('.')) {
+      const cls = selector.slice(1);
+      return walk(this).filter(el => el.classList && el.classList.contains(cls));
+    }
+    return [];
+  }
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] || null;
+  }
+  closest(selector) {
+    if (selector.startsWith('.')) {
+      const cls = selector.slice(1);
+      let curr = this;
+      while (curr) {
+        if (curr.classList && curr.classList.contains(cls)) return curr;
+        curr = curr.parent;
+      }
+    }
+    return null;
+  }
 }
 function walk(el) { return [el, ...el.children.flatMap(walk)]; }
 function documentFixture(panel = false) {
@@ -37,9 +78,13 @@ function documentFixture(panel = false) {
   document.querySelector = () => null;
   if (panel) {
     const html = fs.readFileSync(path.join(root, 'panel.html'), 'utf8');
-    for (const match of html.matchAll(/<([\w-]+)\b[^>]*\bid="([^"]+)"[^>]*>/g)) {
+    for (const match of html.matchAll(/<([\w-]+)\b[^>]*\bid="([^"]+)"([^>]*)>/g)) {
       const element = document.createElement(match[1]); element.id = match[2];
-      element.hidden = /\bhidden\b/.test(match[0]); document.body.append(element);
+      element.hidden = /\bhidden\b/.test(match[0]); 
+      const classMatch = match[3].match(/\bclass="([^"]+)"/);
+      if (classMatch) element.className = classMatch[1];
+      if (element.hidden && !element.classList.contains('hidden')) element.classList.add('hidden');
+      document.body.append(element);
     }
     for (const match of html.matchAll(/data-relay-prompt="([^"]+)"/g)) {
       const element = document.createElement('button'); element.dataset.relayPrompt = match[1]; document.body.append(element);
@@ -63,7 +108,8 @@ function environment({ panel = false, url = 'https://github.com/SHAM-MAX/new-kan
     tabs: { query: (q, cb) => cb ? cb([{ ...current }]) : Promise.resolve([{ ...current }]), sendMessage: (id, msg, cb) => { const ctx = { url: current.url, branch: null, owner: 'SHAM-MAX', repository: 'new-kanban-board' }; return cb ? cb({ context: ctx }) : Promise.resolve({ context: ctx }); }, onActivated: event(), onUpdated: event(), onRemoved: event() },
     windows: { getCurrent: async () => ({ id: 1 }) },
     action: { onClicked: event(), setBadgeText() {}, setTitle() {} },
-    sidePanel: { open: async () => {}, setOptions: async () => {} }
+    sidePanel: { open: async () => {}, setOptions: async () => {} },
+    storage: { local: { get: (keys, cb) => cb && cb({}), set: (obj, cb) => cb && cb(), remove: (key, cb) => cb && cb() } }
   };
   const scope = vm.createContext({
     URL, console, document, window, location, chrome, fetch,

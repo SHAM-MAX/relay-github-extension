@@ -39,7 +39,25 @@
     "context-error",
     "connect",
     "close",
-    "model-selector"
+    "model-selector",
+    "custom-picker-trigger",
+    "custom-picker-dropdown",
+    "custom-picker-value",
+    "gear",
+    "gear-menu",
+    "gear-history",
+    "gear-models",
+    "gear-prefs",
+    "gear-about",
+    "history-view",
+    "back-history",
+    "history-list",
+    "preferences-view",
+    "back-prefs",
+    "pref-clear-current",
+    "pref-clear-all",
+    "about-view",
+    "back-about"
   ].map(name => [name, $(name)]));
 
 
@@ -287,29 +305,7 @@
       body
     );
 
-    if (message.model && message.role === "assistant") {
-      const modelInfo = document.createElement("div");
-      modelInfo.className = "relay-ai-message-model";
-      modelInfo.style.fontSize = "11px";
-      modelInfo.style.color = "rgba(255, 255, 255, 0.4)";
-      modelInfo.style.marginTop = "6px";
-      modelInfo.style.textAlign = "left";
-      
-      const niceName = {
-        'auto': 'Auto — Recommended',
-        'openai/gpt-oss-120b': 'Groq — GPT-OSS 120B',
-        'openai/gpt-oss-20b': 'Groq — GPT-OSS 20B',
-        'qwen/qwen3.5-397b-a17b': 'OpenRouter — Qwen',
-        'openrouter/free': 'OpenRouter — Free',
-        'gemini-3.8-flash': 'Gemini 3.8 Flash',
-        'gemini-3.7-flash': 'Gemini 3.7 Flash',
-        'gemini-3.6-flash': 'Gemini 3.6 Flash',
-        'gemini-3.5-flash': 'Gemini 3.5 Flash'
-      }[message.model] || message.model;
-      
-      modelInfo.textContent = "Model: " + niceName;
-      article.append(modelInfo);
-    }
+
 
     if (message.files?.length) {
 
@@ -1567,6 +1563,8 @@
           context:
             messageContext
         });
+        
+        if (typeof saveConversation === "function") saveConversation();
 
 
         state.files = [];
@@ -1620,6 +1618,8 @@
             model:
               response.model
           });
+          
+          if (typeof saveConversation === "function") saveConversation();
 
         } catch (err) {
 
@@ -1710,14 +1710,83 @@
      INITIAL STATE
      ========================================================= */
 
+  const customPicker = document.getElementById("relay-ai-custom-picker");
+  const customPickerTrigger = document.getElementById("relay-ai-custom-picker-trigger");
+  const customPickerValue = document.getElementById("relay-ai-custom-picker-value");
+  const customPickerDropdown = document.getElementById("relay-ai-custom-picker-dropdown");
+
+  function setModel(value) {
+    if (ui["model-selector"]) ui["model-selector"].value = value;
+    if (globalThis.chrome && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ relay_ai_model: value });
+    }
+    
+    // Update custom picker UI
+    if (customPickerDropdown && customPickerValue) {
+      const options = customPickerDropdown.querySelectorAll('.relay-ai-custom-picker-option');
+      options.forEach(opt => {
+        if (opt.dataset.value === value) {
+          opt.classList.add('is-selected');
+          const textSpan = opt.querySelector('.relay-ai-option-text');
+          if (textSpan) customPickerValue.textContent = textSpan.textContent;
+        } else {
+          opt.classList.remove('is-selected');
+        }
+      });
+    }
+  }
+
   if (ui["model-selector"] && globalThis.chrome?.storage?.local) {
     chrome.storage.local.get(["relay_ai_model"], (result) => {
       if (result.relay_ai_model) {
-        ui["model-selector"].value = result.relay_ai_model;
+        setModel(result.relay_ai_model);
+      } else {
+        setModel(ui["model-selector"].value || "auto");
       }
     });
     ui["model-selector"].addEventListener("change", () => {
-      chrome.storage.local.set({ relay_ai_model: ui["model-selector"].value });
+      setModel(ui["model-selector"].value);
+    });
+  } else if (ui["model-selector"]) {
+    setModel(ui["model-selector"].value || "auto");
+  }
+
+  if (customPicker && customPickerTrigger && customPickerDropdown) {
+    customPickerTrigger.addEventListener("click", (e) => {
+      e.stopPropagation && e.stopPropagation();
+      const isOpen = customPicker.classList.contains("is-open");
+      if (isOpen) {
+        customPicker.classList.remove("is-open");
+        customPickerTrigger.setAttribute("aria-expanded", "false");
+      } else {
+        customPicker.classList.add("is-open");
+        customPickerTrigger.setAttribute("aria-expanded", "true");
+      }
+    });
+
+    customPickerDropdown.addEventListener("click", (e) => {
+      const option = e.target.closest(".relay-ai-custom-picker-option");
+      if (option) {
+        e.stopPropagation && e.stopPropagation();
+        const value = option.dataset.value;
+        setModel(value);
+        customPicker.classList.remove("is-open");
+        customPickerTrigger.setAttribute("aria-expanded", "false");
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (customPicker.classList.contains("is-open") && !customPicker.contains(e.target)) {
+        customPicker.classList.remove("is-open");
+        customPickerTrigger.setAttribute("aria-expanded", "false");
+      }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && customPicker.classList.contains("is-open")) {
+        customPicker.classList.remove("is-open");
+        customPickerTrigger.setAttribute("aria-expanded", "false");
+      }
     });
   }
 
@@ -1729,4 +1798,309 @@
 
   requestInitialContext();
 
+  /* =========================================================
+     GEAR MENU & CHAT HISTORY & PERSISTENCE
+     ========================================================= */
+
+  // 1. Gear menu toggle
+  if (ui["gear"]) {
+    ui["gear"].addEventListener("click", (e) => {
+      e.stopPropagation();
+      ui["gear-menu"].classList.toggle("hidden");
+      ui["gear"].classList.toggle("active");
+    });
+  }
+
+  // Close gear menu when clicking outside
+  document.addEventListener("click", (e) => {
+    if (ui["gear-menu"] && !ui["gear-menu"].classList.contains("hidden") && !ui["gear-menu"].contains(e.target) && !ui["gear"].contains(e.target)) {
+      ui["gear-menu"].classList.add("hidden");
+      ui["gear"].classList.remove("active");
+    }
+  });
+
+  // Close on Escape
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && ui["gear-menu"] && !ui["gear-menu"].classList.contains("hidden")) {
+      ui["gear-menu"].classList.add("hidden");
+      ui["gear"].classList.remove("active");
+    }
+  });
+
+  // View navigation helper
+  function openView(viewElement) {
+    if (ui["gear-menu"]) ui["gear-menu"].classList.add("hidden");
+    if (ui["gear"]) ui["gear"].classList.remove("active");
+    
+    // Hide all subviews first
+    ["history-view", "preferences-view", "about-view"].forEach(id => {
+      if (ui[id]) ui[id].classList.add("hidden");
+    });
+    
+    if (viewElement) {
+      viewElement.classList.remove("hidden");
+    }
+  }
+
+  // History View
+  if (ui["gear-history"]) {
+    ui["gear-history"].addEventListener("click", () => {
+      openView(ui["history-view"]);
+      loadChatHistory();
+    });
+  }
+  if (ui["back-history"]) {
+    ui["back-history"].addEventListener("click", () => openView(null));
+  }
+
+  // Preferences View
+  if (ui["gear-prefs"]) {
+    ui["gear-prefs"].addEventListener("click", () => openView(ui["preferences-view"]));
+  }
+  if (ui["back-prefs"]) {
+    ui["back-prefs"].addEventListener("click", () => openView(null));
+  }
+
+  // About View
+  if (ui["gear-about"]) {
+    ui["gear-about"].addEventListener("click", () => {
+      openView(ui["about-view"]);
+      const versionEl = document.getElementById("relay-ai-version");
+      if (versionEl && chrome.runtime && chrome.runtime.getManifest) {
+        versionEl.textContent = chrome.runtime.getManifest().version;
+      }
+    });
+  }
+  if (ui["back-about"]) {
+    ui["back-about"].addEventListener("click", () => openView(null));
+  }
+
+  // AI Models
+  if (ui["gear-models"]) {
+    ui["gear-models"].addEventListener("click", () => {
+      if (ui["gear-menu"]) ui["gear-menu"].classList.add("hidden");
+      if (ui["gear"]) ui["gear"].classList.remove("active");
+      
+      const customPickerTrigger = document.getElementById("relay-ai-custom-picker-trigger");
+      if (customPickerTrigger) {
+        customPickerTrigger.click();
+      } else if (ui["model-selector"]) {
+        ui["model-selector"].focus();
+      }
+    });
+  }
+
+  // Preferences Logic
+  function showConfirmDialog(title, message, onConfirm) {
+    const overlay = document.createElement("div");
+    overlay.className = "relay-ai-subview";
+    overlay.style.zIndex = "1000";
+    
+    const header = document.createElement("div");
+    header.className = "relay-ai-subview-header";
+    const h2 = document.createElement("h2");
+    h2.textContent = title;
+    header.appendChild(h2);
+    
+    const content = document.createElement("div");
+    content.className = "relay-ai-subview-content";
+    content.style.padding = "16px";
+    
+    const p = document.createElement("p");
+    p.style.marginBottom = "20px";
+    p.style.fontSize = "14px";
+    p.textContent = message;
+    
+    const confirmBtn = document.createElement("button");
+    confirmBtn.id = "relay-confirm-btn";
+    confirmBtn.className = "relay-ai-btn relay-ai-btn-danger";
+    confirmBtn.style.width = "100%";
+    confirmBtn.style.marginBottom = "12px";
+    confirmBtn.textContent = "Confirm";
+    
+    const cancelBtn = document.createElement("button");
+    cancelBtn.id = "relay-cancel-btn";
+    cancelBtn.className = "relay-ai-btn relay-ai-btn-secondary";
+    cancelBtn.style.width = "100%";
+    cancelBtn.textContent = "Cancel";
+    
+    content.appendChild(p);
+    content.appendChild(confirmBtn);
+    content.appendChild(cancelBtn);
+    
+    overlay.appendChild(header);
+    overlay.appendChild(content);
+    
+    document.body.appendChild(overlay);
+    
+    confirmBtn.addEventListener("click", () => {
+      overlay.remove();
+      onConfirm();
+    });
+    cancelBtn.addEventListener("click", () => {
+      overlay.remove();
+    });
+  }
+
+  if (ui["pref-clear-current"]) {
+    ui["pref-clear-current"].addEventListener("click", () => {
+      showConfirmDialog("Clear Conversation", "Are you sure you want to clear the current conversation?", () => {
+        state.messages = [];
+        state.files = [];
+        renderConversation(true);
+        openView(null);
+      });
+    });
+  }
+
+  if (ui["pref-clear-all"]) {
+    ui["pref-clear-all"].addEventListener("click", () => {
+      showConfirmDialog("Clear All History", "Are you sure you want to delete all saved conversations?", () => {
+        if (chrome.storage && chrome.storage.local) {
+          chrome.storage.local.remove("relay_conversations", () => {
+            state.messages = [];
+            state.files = [];
+            renderConversation(true);
+            openView(null);
+          });
+        }
+      });
+    });
+  }
+
+  // Conversation Persistence
+  state.conversationId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+  
+  function saveConversation() {
+    if (!currentContext || state.messages.length === 0) return;
+    
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(["relay_conversations"], (res) => {
+        let conversations = res.relay_conversations || [];
+        
+        const index = conversations.findIndex(c => c.conversationId === state.conversationId);
+        
+        const convoData = {
+          conversationId: state.conversationId,
+          title: state.messages[0].text ? state.messages[0].text.substring(0, 40) + "..." : "New Conversation",
+          owner: currentContext.owner,
+          repository: currentContext.repository,
+          model: ui["model-selector"]?.value || "auto",
+          messages: state.messages,
+          createdAt: index >= 0 ? conversations[index].createdAt : Date.now(),
+          updatedAt: Date.now()
+        };
+
+        if (index >= 0) {
+          conversations[index] = convoData;
+        } else {
+          conversations.push(convoData);
+        }
+        
+        chrome.storage.local.set({ relay_conversations: conversations });
+      });
+    }
+  }
+
+  // Load Chat History
+  function loadChatHistory() {
+    const list = ui["history-list"];
+    if (!list) return;
+    list.replaceChildren();
+    
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(["relay_conversations"], (res) => {
+        let conversations = res.relay_conversations || [];
+        
+        if (currentContext && currentContext.owner && currentContext.repository) {
+          conversations = conversations.filter(c => c.owner === currentContext.owner && c.repository === currentContext.repository);
+        }
+        
+        if (conversations.length === 0) {
+          const emptyMsg = document.createElement("p");
+          emptyMsg.style.color = "#8b949e";
+          emptyMsg.style.textAlign = "center";
+          emptyMsg.style.marginTop = "20px";
+          emptyMsg.textContent = "No previous conversations found for this repository.";
+          list.appendChild(emptyMsg);
+          return;
+        }
+        
+        conversations.sort((a, b) => b.updatedAt - a.updatedAt);
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        const groups = {
+          "Today": [],
+          "Yesterday": [],
+          "Older": []
+        };
+        
+        conversations.forEach(c => {
+          const updated = new Date(c.updatedAt);
+          if (updated >= today) groups["Today"].push(c);
+          else if (updated >= yesterday) groups["Yesterday"].push(c);
+          else groups["Older"].push(c);
+        });
+        
+        Object.keys(groups).forEach(groupName => {
+          if (groups[groupName].length > 0) {
+            const heading = document.createElement("h3");
+            heading.textContent = groupName;
+            heading.style.margin = "16px 0 8px";
+            heading.style.fontSize = "12px";
+            heading.style.color = "#8b949e";
+            heading.style.textTransform = "uppercase";
+            list.appendChild(heading);
+            
+            groups[groupName].forEach(c => {
+              const item = document.createElement("div");
+              item.className = "relay-ai-history-card";
+              item.style.padding = "12px";
+              item.style.border = "1px solid #30363d";
+              item.style.borderRadius = "6px";
+              item.style.marginBottom = "8px";
+              item.style.cursor = "pointer";
+              
+              const title = document.createElement("div");
+              title.textContent = c.title;
+              title.style.fontWeight = "bold";
+              title.style.color = "#c9d1d9";
+              title.style.marginBottom = "4px";
+              
+              const meta = document.createElement("div");
+              meta.textContent = new Date(c.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " · " + c.messages.length + " messages";
+              meta.style.fontSize = "12px";
+              meta.style.color = "#8b949e";
+              
+              item.appendChild(title);
+              item.appendChild(meta);
+              
+              item.addEventListener("click", () => {
+                restoreConversation(c);
+              });
+              
+              list.appendChild(item);
+            });
+          }
+        });
+      });
+    }
+  }
+
+  function restoreConversation(convo) {
+    state.conversationId = convo.conversationId;
+    state.messages = [...convo.messages];
+    state.files = []; 
+    
+    renderConversation(true);
+    
+    openView(null);
+  }
+
 })();
+
+

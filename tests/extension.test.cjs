@@ -190,3 +190,164 @@ test('non-GitHub context is cleared and disables send', async () => {
   assert.equal(env.get('context-json').textContent, ''); 
   assert.equal(env.get('send').disabled, true);
 });
+test('gear menu toggles visibility and responds to escape/outside clicks', async () => {
+  const env = await panel();
+  const gear = env.get('gear');
+  const menu = env.get('gear-menu');
+  assert.equal(menu.classList.contains('hidden'), true);
+  
+  await gear.click(); await settle();
+  assert.equal(menu.classList.contains('hidden'), false);
+  
+  await env.document.emit('click', { target: env.document.body }); await settle();
+  assert.equal(menu.classList.contains('hidden'), true);
+  
+  await gear.click(); await settle();
+  assert.equal(menu.classList.contains('hidden'), false);
+  
+  await env.document.emit('keydown', { key: 'Escape' }); await settle();
+  assert.equal(menu.classList.contains('hidden'), true);
+});
+
+test('gear menu opens and closes subviews', async () => {
+  const env = await panel();
+  await env.get('gear').click(); await settle();
+  
+  await env.get('gear-prefs').click(); await settle();
+  assert.equal(env.get('preferences-view').classList.contains('hidden'), false);
+  assert.equal(env.get('gear-menu').classList.contains('hidden'), true);
+  
+  await env.get('back-prefs').click(); await settle();
+  assert.equal(env.get('preferences-view').classList.contains('hidden'), true);
+  
+  await env.get('gear').click(); await settle();
+  await env.get('gear-about').click(); await settle();
+  assert.equal(env.get('about-view').classList.contains('hidden'), false);
+});
+
+test('chat history loads, filters, and restores conversations', async () => {
+  const env = await panel();
+  
+  const convo1 = {
+    conversationId: 'c1',
+    title: 'Repo 1 Convo',
+    owner: 'SHAM-MAX',
+    repository: 'new-kanban-board',
+    messages: [{ role: 'user', text: 'hello from repo 1', files: [] }],
+    updatedAt: Date.now()
+  };
+  const convo2 = {
+    conversationId: 'c2',
+    title: 'Repo 2 Convo',
+    owner: 'other-owner',
+    repository: 'other-repo',
+    messages: [{ role: 'user', text: 'hello from repo 2', files: [] }],
+    updatedAt: Date.now()
+  };
+  
+  env.chrome.storage.local.get = (keys, cb) => {
+    cb({ relay_conversations: [convo1, convo2] });
+  };
+  
+  await env.get('gear').click(); await settle();
+  await env.get('gear-history').click(); await settle();
+  
+  assert.equal(env.get('history-view').classList.contains('hidden'), false);
+  
+  // It should filter out Repo 2
+  const historyText = env.get('history-list').textContent;
+  assert.match(historyText, /Repo 1 Convo/);
+  assert.doesNotMatch(historyText, /Repo 2 Convo/);
+  
+  // Restore
+  const cards = walk(env.get('history-list')).filter(el => el.className === 'relay-ai-history-card');
+  assert.equal(cards.length, 1);
+  await cards[0].click(); await settle();
+  
+  assert.equal(env.get('history-view').classList.contains('hidden'), true);
+  const msgs = walk(env.get('messages')).filter(el => el.className && el.className.includes('relay-ai-message-body'));
+  assert.equal(msgs.length, 1);
+  assert.equal(msgs[0].textContent, 'hello from repo 1');
+});
+
+test('ai models menu opens custom picker', async () => {
+  const env = await panel();
+  
+  // Add mock options since harness doesn't parse elements without IDs
+  const dropdown = env.get('custom-picker-dropdown');
+  const option = env.document.createElement('div');
+  option.className = 'relay-ai-custom-picker-option';
+  option.dataset.value = 'custom-model';
+  
+  const text = env.document.createElement('span');
+  text.className = 'relay-ai-option-text';
+  text.textContent = 'Custom Model';
+  option.append(text);
+  dropdown.append(option);
+  
+  await env.get('gear').click(); await settle();
+  await env.get('gear-models').click(); await settle();
+  
+  assert.equal(env.get('gear-menu').classList.contains('hidden'), true);
+  
+  const customPicker = env.document.getElementById('relay-ai-custom-picker');
+  assert.equal(customPicker.classList.contains('is-open'), true);
+  
+  await dropdown.emit('click', { target: option }); await settle();
+  
+  assert.equal(customPicker.classList.contains('is-open'), false);
+  assert.equal(env.get('model-selector').value, 'custom-model');
+  assert.equal(env.get('custom-picker-value').textContent, 'Custom Model');
+});
+
+test('preferences clear history shows dialog and deletes storage', async () => {
+  const env = await panel();
+  await env.get('gear').click(); await settle();
+  await env.get('gear-prefs').click(); await settle();
+  
+  await env.get('pref-clear-all').click(); await settle();
+  
+  // Dialog should exist
+  const dialogs = walk(env.document).filter(el => el.className && el.className.includes('relay-ai-subview'));
+  assert.ok(dialogs.length >= 4);
+  
+  const confirmBtn = walk(env.document).find(el => el.id === 'relay-confirm-btn');
+  assert.ok(confirmBtn);
+  
+  let removedKey = null;
+  env.chrome.storage.local.remove = (key, cb) => {
+    removedKey = key;
+    cb();
+  };
+  
+  await confirmBtn.click(); await settle();
+  assert.equal(removedKey, 'relay_conversations');
+  
+  const remain = walk(env.document).find(el => el.id === 'relay-confirm-btn');
+  assert.ok(!remain);
+});
+
+
+
+test('assistant response does not render internal debug or model metadata', async () => {
+  const env = await panel();
+  env.get('input').value = 'hi'; 
+  await env.get('input').emit('input');
+  const sending = env.get('form').emit('submit'); 
+  await settle();
+  
+  env.resolveAI({ 
+    reply: 'Hello! How can I assist you with your project today?', 
+    model: 'openai/gpt-oss-120b'
+  }); 
+  await sending;
+  
+  const text = walk(env.get('messages')).map(el => el.textContent).join(' ');
+  
+  assert.match(text, /Hello! How can I assist/);
+  assert.doesNotMatch(text, /RELAY_DEBUG_VERSION/);
+  assert.doesNotMatch(text, /pm-context-v1/);
+  assert.doesNotMatch(text, /Model:/);
+  assert.doesNotMatch(text, /Groq/);
+  assert.doesNotMatch(text, /GPT-OSS/);
+});
