@@ -18,6 +18,45 @@
 
   <div class="relay-ai-shell">
 
+    <!-- Overlay Views -->
+    <div id="relay-ai-history-view" class="relay-ai-subview hidden">
+      <div class="relay-ai-subview-header">
+        <button id="relay-ai-back-history" class="relay-ai-subview-back" aria-label="Back">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg> Back
+        </button>
+        <h2>Chat History</h2>
+      </div>
+      <div class="relay-ai-subview-content" id="relay-ai-history-list"></div>
+    </div>
+
+    <div id="relay-ai-preferences-view" class="relay-ai-subview hidden">
+      <div class="relay-ai-subview-header">
+        <button id="relay-ai-back-prefs" class="relay-ai-subview-back" aria-label="Back">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg> Back
+        </button>
+        <h2>Preferences</h2>
+      </div>
+      <div class="relay-ai-subview-content">
+        <button id="relay-ai-pref-clear-current" class="relay-ai-btn relay-ai-btn-secondary" style="width:100%; margin-bottom:12px;">Clear Current Conversation</button>
+        <button id="relay-ai-pref-clear-all" class="relay-ai-btn relay-ai-btn-danger" style="width:100%;">Clear All History</button>
+      </div>
+    </div>
+
+    <div id="relay-ai-about-view" class="relay-ai-subview hidden">
+      <div class="relay-ai-subview-header">
+        <button id="relay-ai-back-about" class="relay-ai-subview-back" aria-label="Back">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg> Back
+        </button>
+        <h2>About Relay AI</h2>
+      </div>
+      <div class="relay-ai-subview-content" style="text-align:center; padding-top:40px;">
+        <div class="relay-ai-mark" style="width:60px; height:60px; margin: 0 auto 16px;"></div>
+        <h3 style="margin-bottom:8px; font-size:18px; color:white;">Relay AI</h3>
+        <p style="color:var(--relay-ai-text-secondary); margin-bottom:16px;">Your GitHub Assistant</p>
+        <p style="color:var(--relay-ai-text-secondary); font-size:12px;">Version <span id="relay-ai-version">...</span></p>
+      </div>
+    </div>
+
     <!-- =====================================================
          TOP HEADER
          ===================================================== -->
@@ -435,12 +474,13 @@
           </span>
 
 
-          <!-- Model Selector -->
+          <!-- Hidden Native Model Selector -->
           <select
             id="relay-ai-model-selector"
             class="relay-ai-model-select"
             aria-label="Select AI Model"
             title="Select AI Model"
+            hidden
           >
             <optgroup label="Auto">
               <option value="auto">Auto — Recommended</option>
@@ -460,6 +500,75 @@
               <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
             </optgroup>
           </select>
+
+          <!-- Custom UI Model Picker -->
+          <div class="relay-ai-custom-picker" id="relay-ai-custom-picker">
+            <button
+              id="relay-ai-custom-picker-trigger"
+              class="relay-ai-custom-picker-trigger"
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+            >
+              <span id="relay-ai-custom-picker-value">Auto — Recommended</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div
+              id="relay-ai-custom-picker-dropdown"
+              class="relay-ai-custom-picker-dropdown"
+              role="listbox"
+              aria-label="Select AI Model"
+            >
+              <div class="relay-ai-custom-picker-group">
+                <div class="relay-ai-custom-picker-label">Auto</div>
+                <div class="relay-ai-custom-picker-option is-selected" data-value="auto" role="option" tabindex="0">
+                  <span class="relay-ai-option-text">Auto — Recommended</span>
+                  <svg class="relay-ai-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+              </div>
+              <div class="relay-ai-custom-picker-group">
+                <div class="relay-ai-custom-picker-label">Groq</div>
+                <div class="relay-ai-custom-picker-option" data-value="openai/gpt-oss-120b" role="option" tabindex="0">
+                  <span class="relay-ai-option-text">Groq — GPT-OSS 120B</span>
+                  <svg class="relay-ai-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <div class="relay-ai-custom-picker-option" data-value="openai/gpt-oss-20b" role="option" tabindex="0">
+                  <span class="relay-ai-option-text">Groq — GPT-OSS 20B</span>
+                  <svg class="relay-ai-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+              </div>
+              <div class="relay-ai-custom-picker-group">
+                <div class="relay-ai-custom-picker-label">OpenRouter</div>
+                <div class="relay-ai-custom-picker-option" data-value="qwen/qwen3.5-397b-a17b" role="option" tabindex="0">
+                  <span class="relay-ai-option-text">OpenRouter — Qwen</span>
+                  <svg class="relay-ai-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <div class="relay-ai-custom-picker-option" data-value="openrouter/free" role="option" tabindex="0">
+                  <span class="relay-ai-option-text">OpenRouter — Free</span>
+                  <svg class="relay-ai-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+              </div>
+              <div class="relay-ai-custom-picker-group">
+                <div class="relay-ai-custom-picker-label">Gemini</div>
+                <div class="relay-ai-custom-picker-option" data-value="gemini-3.8-flash" role="option" tabindex="0">
+                  <span class="relay-ai-option-text">Gemini 3.8 Flash</span>
+                  <svg class="relay-ai-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <div class="relay-ai-custom-picker-option" data-value="gemini-3.7-flash" role="option" tabindex="0">
+                  <span class="relay-ai-option-text">Gemini 3.7 Flash</span>
+                  <svg class="relay-ai-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <div class="relay-ai-custom-picker-option" data-value="gemini-3.6-flash" role="option" tabindex="0">
+                  <span class="relay-ai-option-text">Gemini 3.6 Flash</span>
+                  <svg class="relay-ai-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <div class="relay-ai-custom-picker-option" data-value="gemini-3.5-flash" role="option" tabindex="0">
+                  <span class="relay-ai-option-text">Gemini 3.5 Flash</span>
+                  <svg class="relay-ai-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
 
 
           <!-- Send -->
@@ -504,10 +613,22 @@
       </p>
 
 
-      <!-- Bottom note -->
+      <!-- Bottom container -->
+      <div class="relay-ai-footer-bottom">
+        <div class="relay-ai-gear-container">
+          <button id="relay-ai-gear" class="relay-ai-gear-btn" aria-label="Settings" title="Settings">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          </button>
+          <div id="relay-ai-gear-menu" class="relay-ai-gear-menu hidden">
+            <button id="relay-ai-gear-history" class="relay-ai-gear-item">Chat History</button>
+            <button class="relay-ai-gear-item" id="relay-ai-gear-models">AI Models</button>
+            <button id="relay-ai-gear-prefs" class="relay-ai-gear-item">Preferences</button>
+            <button id="relay-ai-gear-about" class="relay-ai-gear-item">About Relay AI</button>
+          </div>
+        </div>
 
-      <p
-        id="relay-ai-demo-note"
+        <p
+          id="relay-ai-demo-note"
         class="relay-ai-demo-note"
       >
 
@@ -534,6 +655,7 @@
 
       </p>
 
+      </div>
     </footer>
 
   </div>

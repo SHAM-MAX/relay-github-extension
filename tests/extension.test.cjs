@@ -47,15 +47,15 @@ test('DOM branch hints tolerate malformed/partial GitHub data', () => {
 test('MV3 package permits only GitHub injection and the Relay backend connection', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
   assert.equal(manifest.manifest_version, 3); assert.equal(manifest.minimum_chrome_version, '116');
-  assert.deepEqual(manifest.permissions, ['sidePanel']);
+  assert.deepEqual(manifest.permissions, ['storage']);
   assert.deepEqual(manifest.host_permissions, ['https://github.com/*', 'https://relay-standalone-backend.onrender.com/*']);
-  assert.match(manifest.content_security_policy.extension_pages, /connect-src https:\/\/relay-ai-project.hatchable.site;/);
+  assert.match(manifest.content_security_policy.extension_pages, /connect-src https:\/\/relay-standalone-backend.onrender.com;/);
   assert.deepEqual(manifest.content_scripts[0].matches, ['https://github.com/*']);
-  const files = [manifest.background.service_worker, manifest.side_panel.default_path, ...manifest.content_scripts[0].js, ...manifest.content_scripts[0].css, ...Object.values(manifest.icons)];
+  const files = [manifest.background.service_worker, ...manifest.content_scripts[0].js, ...manifest.content_scripts[0].css, ...Object.values(manifest.icons)];
   for (const file of files) assert.ok(fs.existsSync(path.join(root, file)), file);
   for (const file of ['background.js', 'context.js', 'content.js', 'panel.js']) {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
-    assert.doesNotMatch(source, /\b(fetch|XMLHttpRequest|WebSocket|FileReader|eval)\s*\(|\.innerHTML\s*=|chrome\.(cookies|storage)|localStorage|sessionStorage|console\.(log|error)/);
+    assert.doesNotMatch(source, /\b(fetch|XMLHttpRequest|WebSocket|FileReader|eval)\s*\(|\.innerHTML\s*=|chrome\.(cookies)|localStorage|sessionStorage|console\.(log|error)/);
     assert.doesNotMatch(source, /github_pat_[a-zA-Z0-9_]+|gh[pousr]_[a-zA-Z0-9]{20,}|-----BEGIN .*PRIVATE KEY/);
   }
 });
@@ -71,14 +71,11 @@ test('launcher stays single through reinjection, SPA routes, and DOM replacement
   env.chrome.runtime.onMessage.emit({ type: 'relay-ai-get-context' }, { id: env.chrome.runtime.id }, result => { reply = result; });
   assert.equal(reply.context.issueNumber, 15);
 });
-test('launcher opens via message and displays a recoverable error on rejection', async () => {
+test('launcher opens floating panel locally without message passing', async () => {
   const env = environment(); env.run('context.js'); env.run('content.js');
   await env.get('launcher-button').click(); await settle();
-  assert.equal(env.sent.at(-1).type, 'relay-ai-open-panel');
-  env.chrome.runtime.sendMessage = async () => { throw new Error('invalidated'); };
-  await env.get('launcher-button').click(); await settle();
-  assert.equal(env.get('launcher-error').hidden, false);
-  assert.match(env.get('launcher-error').textContent, /Reload/);
+  assert.equal(env.get('launcher').style.display, 'none');
+  assert.equal(walk(env.document).filter(el => el.id === 'relay-ai-floating-panel').length, 1);
 });
 test('worker opens synchronously from a trusted top-frame message; rejects others', async () => {
   const env = environment(); const calls = []; let response;
@@ -147,22 +144,19 @@ test('too many files and oversized messages have explicit errors; drafts are ret
   assert.match(env.get('error').textContent, /4,000/); assert.equal(env.get('input').value.length, 4001);
   assert.equal(env.get('messages').children.length, 0);
 });
-test('navigation updates context and keeps chat drafts isolated between tabs', async () => {
-  const env = await panel(); env.get('input').value = 'Draft on tab 10'; await env.get('input').emit('input');
-  env.current.url = base + '/pull/42/files'; env.chrome.tabs.onUpdated.emit(10, { url: env.current.url }); await settle();
+test('navigation updates context via postMessage', async () => {
+  const env = await panel();
+  env.get('input').value = 'Draft here'; await env.get('input').emit('input');
+  env.window.postMessage({ type: 'relay-ai-host-context', context: parse(base + '/pull/42/files') }); await settle();
   assert.equal(env.get('page').textContent, 'Pull request #42');
-  env.current.id = 11; env.current.url = 'https://github.com/github/docs'; env.chrome.tabs.onActivated.emit({ tabId: 11, windowId: 1 }); await settle();
-  assert.equal(env.get('input').value, ''); assert.equal(env.get('repository').textContent, 'github/docs');
-  env.current.id = 10; env.current.url = base; env.chrome.tabs.onActivated.emit({ tabId: 10, windowId: 1 }); await settle();
-  assert.equal(env.get('input').value, 'Draft on tab 10');
+  assert.equal(env.get('input').value, 'Draft here'); // In Phase 2, draft is just kept in memory for this iframe
 });
-test('in-flight backend responses cannot appear in a different tab conversation', async () => {
+test('in-flight backend responses cannot appear in a different context', async () => {
   const env = await panel(); env.get('input').value = 'Original'; const sending = env.get('form').emit('submit'); await settle();
-  env.current.id = 11; env.chrome.tabs.onActivated.emit({ tabId: 11, windowId: 1 }); await settle();
+  env.window.postMessage({ type: 'relay-ai-host-context', context: parse('https://github.com/github/docs') }); await settle();
   assert.equal(env.get('send').disabled, true);
-  env.resolveAI({ reply: 'Response for original tab.' }); await sending; assert.equal(env.get('messages').children.length, 0);
-  env.current.id = 10; env.chrome.tabs.onActivated.emit({ tabId: 10, windowId: 1 }); await settle();
-  assert.equal(env.get('messages').children.length, 2);
+  env.resolveAI({ reply: 'Response for original repo.', context: { repository: 'Relay-AI/test-repo' } }); await sending;
+  assert.equal(env.get('messages').children.length, 0); // Should reject because context repo changed
 });
 test('backend failure shows a clean error, keeps chat, restores draft, and permits retry', async () => {
   const env = await panel(); env.get('input').value = 'Explain this repository';
@@ -184,14 +178,15 @@ test('attachments never enter the request; file-only send is a local error', asy
   assert.match(walk(env.get('messages')).map(el => el.textContent).join(' '), /not uploaded/);
 });
 test('missing content script gives URL context and a refresh instruction, not silent failure', async () => {
-  const env = await panel(); env.chrome.tabs.sendMessage = async () => { throw new Error('no receiver'); };
-  await env.get('refresh').click(); await settle();
+  const env = await panel(); 
+  env.chrome.tabs.sendMessage = async () => { throw new Error('no receiver'); };
+  await env.get('context-refresh').click(); await settle();
   assert.equal(env.get('repository').textContent, 'SHAM-MAX/new-kanban-board');
   assert.match(env.get('context-error').textContent, /Refresh this GitHub tab/);
 });
-test('non-GitHub tabs clear context and do not request page contents', async () => {
-  const env = await panel(); let requested = 0;
-  env.chrome.tabs.sendMessage = async () => { requested++; };
-  env.current.id = 12; env.current.url = 'https://example.com'; env.chrome.tabs.onActivated.emit({ tabId: 12, windowId: 1 }); await settle();
-  assert.equal(env.get('context-json').textContent, 'null'); assert.equal(env.get('send').disabled, true); assert.equal(requested, 0);
+test('non-GitHub context is cleared and disables send', async () => {
+  const env = await panel();
+  env.window.postMessage({ type: 'relay-ai-host-context', context: null }); await settle();
+  assert.equal(env.get('context-json').textContent, ''); 
+  assert.equal(env.get('send').disabled, true);
 });

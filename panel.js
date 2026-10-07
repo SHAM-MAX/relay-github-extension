@@ -23,6 +23,7 @@
     "context-json",
     "host",
     "refresh",
+    "context-refresh",
     "empty",
     "messages",
     "conversation",
@@ -446,17 +447,12 @@
         cancelBtn.disabled = true;
 
         try {
-          const res = await fetch(RelayAIAssistant.ENDPOINT.replace('/assistant', '/github/issues'), {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ issuePlan: message.issuePlan, context: currentContext })
-          });
+          const res = await RelayAIAssistant.createIssue(message.issuePlan, currentContext);
           
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || "Server error " + res.status);
           
-          planContainer.innerHTML = '';
+          planContainer.replaceChildren();
           for (const result of data.results || []) {
             const card = document.createElement("div");
             card.className = "relay-ai-issue-card";
@@ -716,24 +712,47 @@
      ========================================================= */
 
   function requestInitialContext() {
-
     try {
-
-      window.parent.postMessage(
-        {
-          type: "relay-ai-request-context"
-        },
-        "*"
-      );
-
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: "relay-ai-request-context" }, "*");
+      } else if (chrome && chrome.tabs && chrome.tabs.query) {
+        chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+          if (tabs && tabs[0]) {
+            const url = tabs[0].url;
+            try {
+              const res = chrome.tabs.sendMessage(tabs[0].id, { type: "relay-ai-get-context" }, response => {
+                if (chrome.runtime.lastError || !response || !response.context) {
+                  const fallback = parseRepositoryUrl(url);
+                  if (fallback) {
+                    renderContext({ owner: fallback.owner, repository: fallback.repository, url });
+                  } else {
+                    renderContext(null);
+                  }
+                  setError("Relay could not read the GitHub page. Refresh this GitHub tab.", ui["context-error"]);
+                } else {
+                  renderContext(response.context);
+                }
+              });
+              if (res && res.catch) {
+                res.catch((e) => {
+                  const fallback = parseRepositoryUrl(url);
+                  renderContext(fallback ? { owner: fallback.owner, repository: fallback.repository, url } : null);
+                  setError("Relay could not read the GitHub page. Refresh this GitHub tab.", ui["context-error"]);
+                });
+              }
+            } catch (err) {
+              const fallback = parseRepositoryUrl(url);
+              renderContext(fallback ? { owner: fallback.owner, repository: fallback.repository, url } : null);
+              setError("Relay could not read the GitHub page. Refresh this GitHub tab.", ui["context-error"]);
+            }
+          } else {
+            renderContext(null);
+          }
+        });
+      }
     } catch {
-
       renderContext(null);
-
-      setError(
-        "Relay could not read the GitHub page.",
-        ui["context-error"]
-      );
+      setError("Relay could not read the GitHub page. Refresh this GitHub tab.", ui["context-error"]);
     }
   }
 
@@ -889,14 +908,15 @@
     const title =
       document.createElement("div");
 
-    title.innerHTML = `
-      <span class="relay-ai-repository-dialog-title">
-        Select GitHub repository
-      </span>
-      <span class="relay-ai-repository-dialog-subtitle">
-        Choose the project Relay should work with
-      </span>
-    `;
+    const titleSpan = document.createElement("span");
+    titleSpan.className = "relay-ai-repository-dialog-title";
+    titleSpan.textContent = "Select GitHub repository";
+
+    const subtitleSpan = document.createElement("span");
+    subtitleSpan.className = "relay-ai-repository-dialog-subtitle";
+    subtitleSpan.textContent = "Choose the project Relay should work with";
+
+    title.append(titleSpan, subtitleSpan);
 
 
     const close =
@@ -1066,12 +1086,7 @@
     loadingState.textContent = "Loading repositories...";
     list.append(loadingState);
 
-    fetch(RelayAIAssistant.ENDPOINT.replace('/assistant', '/github/repositories'), {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    })
+    RelayAIAssistant.getRepositories()
     .then(r => {
       if (!r.ok) throw new Error('API error: ' + r.status);
       return r.json();
@@ -1327,16 +1342,17 @@
      ========================================================= */
 
   if (ui.refresh) {
+    ui.refresh.addEventListener("click", event => {
+      event.preventDefault();
+      openRepositoryPicker();
+    });
+  }
 
-    ui.refresh.addEventListener(
-      "click",
-      event => {
-
-        event.preventDefault();
-
-        openRepositoryPicker();
-      }
-    );
+  if (ui["context-refresh"]) {
+    ui["context-refresh"].addEventListener("click", event => {
+      event.preventDefault();
+      requestInitialContext();
+    });
   }
 
 
@@ -1580,6 +1596,13 @@
               { model: ui["model-selector"]?.value || "auto" }
             );
 
+          /*
+           * If context was reset (e.g. navigation changed repo)
+           * while in-flight, discard the reply.
+           */
+          if (state.messages.length === 0) {
+            return;
+          }
 
           state.messages.push({
 

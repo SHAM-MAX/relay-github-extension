@@ -613,6 +613,15 @@
       lastSnapshot =
         snapshot;
 
+      try {
+        chrome.runtime.sendMessage({
+          type: "relay-ai-context-changed",
+          context: latest
+        }).catch(() => {});
+      } catch (e) {
+        // Ignore error if extension context is invalidated
+      }
+
       notifyPanel(
         latest
       );

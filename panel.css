@@ -386,11 +386,21 @@ textarea:focus-visible {
 }
 
 .relay-ai-model-select {
+  display: none !important;
+}
+
+.relay-ai-custom-picker {
   margin-left: auto;
-  appearance: none;
-  -webkit-appearance: none;
-  padding: 0 32px 0 14px;
-  background: linear-gradient(145deg, #075fe0, #063da0) url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" fill="none" stroke="%23eaf0fc" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6"/></svg>') no-repeat right 10px center / 16px;
+  position: relative;
+  font-family: inherit;
+}
+
+.relay-ai-custom-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px 0 16px;
+  background: linear-gradient(145deg, #075fe0, #063da0);
   border: 2px solid #0878ff;
   color: #f7fbff;
   border-radius: 999px;
@@ -401,16 +411,113 @@ textarea:focus-visible {
   outline: none;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 0 30px rgba(13, 102, 237, 0.12);
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
-.relay-ai-model-select:hover {
+.relay-ai-custom-picker-trigger:hover,
+.relay-ai-custom-picker-trigger:focus-visible {
   border-color: #50a0ff;
-  background: linear-gradient(145deg, #0969ef, #0645b0) url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" fill="none" stroke="%23eaf0fc" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="m6 9 6 6 6-6"/></svg>') no-repeat right 10px center / 16px;
+  background: linear-gradient(145deg, #0969ef, #0645b0);
 }
 
-.relay-ai-model-select option {
-  background: #061123;
+.relay-ai-custom-picker-trigger svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  transition: transform 0.2s ease;
+}
+
+.relay-ai-custom-picker.is-open .relay-ai-custom-picker-trigger svg {
+  transform: rotate(180deg);
+}
+
+.relay-ai-custom-picker-dropdown {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: linear-gradient(180deg, #111b2c 0%, #0b1321 100%);
+  border: 1px solid rgba(137, 183, 244, 0.28);
+  border-radius: 16px;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255,255,255,0.05);
+  padding: 8px 0;
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(145, 176, 220, 0.28) transparent;
+}
+
+.relay-ai-custom-picker-dropdown::-webkit-scrollbar { width: 6px; }
+.relay-ai-custom-picker-dropdown::-webkit-scrollbar-track { background: transparent; }
+.relay-ai-custom-picker-dropdown::-webkit-scrollbar-thumb { background: rgba(145, 176, 220, 0.28); border-radius: 10px; }
+
+.relay-ai-custom-picker.is-open .relay-ai-custom-picker-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.relay-ai-custom-picker-group {
+  margin-bottom: 6px;
+}
+.relay-ai-custom-picker-group:last-child {
+  margin-bottom: 0;
+}
+
+.relay-ai-custom-picker-label {
+  padding: 6px 14px 4px;
+  color: #8a9fc4;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.relay-ai-custom-picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  margin: 0 6px;
+  border-radius: 8px;
   color: #eaf0fc;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  outline: none;
+}
+
+.relay-ai-custom-picker-option:hover,
+.relay-ai-custom-picker-option:focus-visible {
+  background: rgba(100, 164, 244, 0.15);
+  color: #ffffff;
+}
+
+.relay-ai-option-check {
+  width: 16px;
+  height: 16px;
+  color: #5b9df5;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.relay-ai-custom-picker-option.is-selected {
+  background: rgba(52, 119, 225, 0.12);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.relay-ai-custom-picker-option.is-selected .relay-ai-option-check {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .relay-ai-send {
@@ -686,4 +793,189 @@ textarea:focus-visible {
   color: #a9d0ff;
   font-size: 12px;
   text-align: center;
+}
+
+
+.relay-ai-btn-sm {
+  padding: 6px 12px;
+  font-size: 11px;
+  height: 28px;
+}
+.relay-ai-issue-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(137, 183, 244, 0.15);
+  justify-content: flex-end;
+}
+.relay-ai-issue-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.relay-ai-issue-edit-title,
+.relay-ai-issue-edit-labels,
+.relay-ai-issue-edit-deps,
+.relay-ai-issue-edit-type,
+.relay-ai-issue-edit-priority {
+  width: 100%;
+}
+.relay-ai-issue-edit-body {
+  width: 100%;
+  resize: vertical;
+}
+
+/* Gear Menu and Footer layout */
+.relay-ai-footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  position: relative;
+}
+.relay-ai-gear-container {
+  position: relative;
+}
+.relay-ai-gear-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--relay-ai-text-secondary);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.relay-ai-gear-btn:hover, .relay-ai-gear-btn.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+.relay-ai-gear-menu {
+  position: absolute;
+  bottom: 40px;
+  left: 0;
+  width: 200px;
+  background: rgba(13, 20, 36, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(137, 183, 244, 0.15);
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transform-origin: bottom left;
+  transition: opacity 0.2s, transform 0.2s;
+  z-index: 1000;
+}
+.relay-ai-gear-menu.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px) scale(0.95);
+}
+.relay-ai-gear-item {
+  background: transparent;
+  border: none;
+  color: var(--relay-ai-text-secondary);
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+.relay-ai-gear-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+/* Subviews */
+.relay-ai-subview {
+  position: absolute;
+  top: 60px; /* Below header */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--relay-ai-bg);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
+}
+.relay-ai-subview.hidden {
+  transform: translateX(100%);
+  pointer-events: none;
+  opacity: 0;
+}
+.relay-ai-subview-header {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.relay-ai-subview-back {
+  background: transparent;
+  border: none;
+  color: var(--relay-ai-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 0;
+  margin-right: 16px;
+  font-size: 14px;
+  transition: color 0.2s;
+}
+.relay-ai-subview-back:hover {
+  color: white;
+}
+.relay-ai-subview-header h2 {
+  margin: 0;
+  font-size: 16px;
+  color: white;
+}
+.relay-ai-subview-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+.relay-ai-btn-danger {
+  background: rgba(248, 81, 73, 0.15);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  color: #ff7b72;
+}
+.relay-ai-btn-danger:hover {
+  background: rgba(248, 81, 73, 0.25);
+}
+.relay-ai-history-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.relay-ai-history-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.relay-ai-history-title {
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0 0 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.relay-ai-history-meta {
+  color: var(--relay-ai-text-secondary);
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
 }

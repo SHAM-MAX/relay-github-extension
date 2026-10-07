@@ -55,15 +55,15 @@ function environment({ panel = false, url = 'https://github.com/SHAM-MAX/new-kan
   const document = documentFixture(panel);
   const timers = new Map(); const intervals = []; const observers = []; const sent = [];
   let nextTimer = 1;
-  const window = new Element('window');
+  const window = new Element('window'); window.parent = window; window.postMessage = (msg) => Promise.resolve().then(() => window.emit('message', { data: msg, source: window }));
   const location = { href: url };
   const current = { id: 10, windowId: 1, url };
   const chrome = {
-    runtime: { id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', onMessage: event(), onStartup: event(), onInstalled: event(), sendMessage: async message => { sent.push(message); return { ok: true }; } },
-    tabs: { query: async () => [{ ...current }], sendMessage: async () => ({ context: { url: current.url, branch: null } }), onActivated: event(), onUpdated: event(), onRemoved: event() },
+    runtime: { id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', onMessage: event(), onStartup: event(), onInstalled: event(), getURL: path => 'chrome-extension://' + path, sendMessage: async message => { sent.push(message); return { ok: true }; } },
+    tabs: { query: (q, cb) => cb ? cb([{ ...current }]) : Promise.resolve([{ ...current }]), sendMessage: (id, msg, cb) => { const ctx = { url: current.url, branch: null, owner: 'SHAM-MAX', repository: 'new-kanban-board' }; return cb ? cb({ context: ctx }) : Promise.resolve({ context: ctx }); }, onActivated: event(), onUpdated: event(), onRemoved: event() },
     windows: { getCurrent: async () => ({ id: 1 }) },
     action: { onClicked: event(), setBadgeText() {}, setTitle() {} },
-    sidePanel: { open: async () => {} }
+    sidePanel: { open: async () => {}, setOptions: async () => {} }
   };
   const scope = vm.createContext({
     URL, console, document, window, location, chrome, fetch,

@@ -51,7 +51,25 @@
       throw failure('Could not connect to Relay. Check your internet connection, sign in using Connect Relay, and allow the extension access to the Relay site.', 'NETWORK_ERROR');
     } finally { clearTimeout(timer); }
   }
-  const api = Object.freeze({ send, connectionURL, ENDPOINT });
+  async function createIssue(issuePlan, context) {
+    const response = await fetch(ENDPOINT.replace('/assistant', '/github/issues'), {
+      method: 'POST', credentials: 'include',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ issuePlan, context })
+    });
+    return response;
+  }
+  
+  async function getRepositories() {
+    const response = await fetch(ENDPOINT.replace('/assistant', '/github/repositories'), {
+      method: 'POST', credentials: 'include',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    return response;
+  }
+  
+  const api = Object.freeze({ send, connectionURL, ENDPOINT, createIssue, getRepositories });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RelayAIAssistant = api;
 })(globalThis);
