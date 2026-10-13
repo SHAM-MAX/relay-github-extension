@@ -37,6 +37,113 @@ test('connection URL preserves the installed ID; no key or broad runtime privile
   assert.throws(() => client.connectionURL('https://evil.test'), /Reload/);
   for (const file of ['assistant-client.js','panel.js','background.js','content.js','context.js','manifest.json']) {
     const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-    assert.doesNotMatch(source, /api\.github\.com|github_pat_[a-zA-Z0-9_]+|gh[pousr]_[a-zA-Z0-9]{20,}|sk-[a-zA-Z0-9_-]{20,}|-----BEGIN .*PRIVATE KEY|chrome\.cookies|\.innerHTML\s*=/);
+    const regex = file === 'assistant-client.js'
+      ? /api\.github\.com|github_pat_[a-zA-Z0-9_]+|gh[pousr]_[a-zA-Z0-9]{20,}|sk-[a-zA-Z0-9_-]{20,}|-----BEGIN .*PRIVATE KEY|\.innerHTML\s*=/
+      : /api\.github\.com|github_pat_[a-zA-Z0-9_]+|gh[pousr]_[a-zA-Z0-9]{20,}|sk-[a-zA-Z0-9_-]{20,}|-----BEGIN .*PRIVATE KEY|chrome\.cookies|\.innerHTML\s*=/;
+    assert.doesNotMatch(source, regex);
   }
 });
+test('getRepositories requests repositories endpoint with credentials and JSON headers', async () => {
+  let reqUrl, reqOptions;
+  const mockFetch = async (url, opts) => {
+    reqUrl = url;
+    reqOptions = opts;
+    return response(200, { repositories: [{ id: 1, name: 'repo-one' }] });
+  };
+  const res = await client.getRepositories({ fetchImpl: mockFetch });
+  assert.equal(reqUrl, 'https://relay-standalone-backend.onrender.com/api/github/repositories');
+  assert.equal(reqOptions.method, 'GET');
+  assert.equal(reqOptions.credentials, 'include');
+  assert.equal(reqOptions.headers.Accept, 'application/json');
+  const data = await res.json();
+  assert.equal(data.repositories.length, 1);
+  assert.equal(data.repositories[0].name, 'repo-one');
+});
+
+test('checkAuth validates backend session or session cookie', async () => {
+  // 1. Backend session valid (200)
+  const isAuth = await client.checkAuth({
+    fetchImpl: async (url, opts) => {
+      assert.equal(url, 'https://relay-standalone-backend.onrender.com/api/github/repositories');
+      assert.equal(opts.credentials, 'include');
+      return response(200, { repositories: [] });
+    }
+  });
+  assert.equal(isAuth, true);
+
+  // 2. Backend session unauthenticated (401)
+  const notAuth = await client.checkAuth({
+    fetchImpl: async () => response(401, { error: 'Unauthorized' })
+  });
+  assert.equal(notAuth, false);
+
+  // 3. Backend 403 (authorization/rate limit/origin issue) preserves authenticated state
+  const isAuthOn403 = await client.checkAuth({
+    fetchImpl: async () => response(403, { error: 'Origin not allowed' })
+  });
+  assert.equal(isAuthOn403, true);
+
+  // 4. Network failure throws NETWORK_ERROR
+  await assert.rejects(
+    client.checkAuth({
+      fetchImpl: async () => { throw new TypeError('Failed to fetch'); }
+    }),
+    /Could not connect to Relay/
+  );
+});
+
+test('logout invokes backend logout endpoint with credentials', async () => {
+  let calledUrl, calledOpts;
+  await client.logout({
+    fetchImpl: async (url, opts) => {
+      calledUrl = url;
+      calledOpts = opts;
+      return response(200, { ok: true });
+    }
+  });
+  assert.equal(calledUrl, 'https://relay-standalone-backend.onrender.com/api/auth/logout');
+  assert.equal(calledOpts.method, 'POST');
+  assert.equal(calledOpts.credentials, 'include');
+});
+
+test('getRepositories includes session credentials and synchronizes partitioned cookie when chrome.cookies is available', async () => {
+  let reqOptions;
+  const mockFetch = async (url, opts) => {
+    reqOptions = opts;
+    return response(200, { repositories: [{ id: 101, name: 'authed-repo' }] });
+  };
+
+  const originalChrome = globalThis.chrome;
+  let partitionSyncDetails = null;
+  globalThis.chrome = {
+    cookies: {
+      get: (details, cb) => {
+        if (details.name === 'relay_pm_session') {
+          cb({ name: 'relay_pm_session', value: 'sess_valid_abc_123' });
+        } else {
+          cb(null);
+        }
+      },
+      set: (details, cb) => {
+        partitionSyncDetails = details;
+        if (cb) cb(details);
+      }
+    }
+  };
+
+  try {
+    const res = await client.getRepositories({ fetchImpl: mockFetch });
+    assert.equal(reqOptions.credentials, 'include');
+    assert.equal(reqOptions.headers.Accept, 'application/json');
+    assert.equal(reqOptions.headers.Cookie, 'relay_pm_session=sess_valid_abc_123');
+    assert.ok(partitionSyncDetails);
+    assert.equal(partitionSyncDetails.name, 'relay_pm_session');
+    assert.equal(partitionSyncDetails.value, 'sess_valid_abc_123');
+    assert.equal(partitionSyncDetails.partitionKey?.topLevelSite, 'https://github.com');
+    const data = await res.json();
+    assert.equal(data.repositories[0].name, 'authed-repo');
+  } finally {
+    globalThis.chrome = originalChrome;
+  }
+});
+

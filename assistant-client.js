@@ -19,6 +19,125 @@
     if (!/^[a-p]{32}$/.test(extensionId || '')) throw failure('Reload the Relay extension to reconnect.', 'INVALID_EXTENSION_ID');
     return ORIGIN + '/extension-connect?extension_id=' + extensionId;
   }
+
+  async function getSessionCookie() {
+    if (!globalThis.chrome?.cookies?.get) return null;
+    try {
+      const cookie = await new Promise((resolve) => {
+        chrome.cookies.get({ url: ORIGIN + '/api/', name: 'relay_pm_session' }, (c1) => {
+          if (c1?.value) return resolve(c1);
+          chrome.cookies.get({ url: ORIGIN, name: 'relay_pm_session' }, (c2) => {
+            resolve(c2);
+          });
+        });
+      });
+      if (cookie?.value && globalThis.chrome?.cookies?.set) {
+        try {
+          chrome.cookies.set({
+            url: ORIGIN + '/api/',
+            name: 'relay_pm_session',
+            value: cookie.value,
+            path: '/api/',
+            secure: true,
+            sameSite: 'no_restriction',
+            partitionKey: { topLevelSite: 'https://github.com' }
+          }, () => {
+            if (chrome.runtime?.lastError) {}
+          });
+        } catch {}
+      }
+      return cookie;
+    } catch {
+      return null;
+    }
+  }
+
+  async function checkAuth(options = {}) {
+    const cookie = await getSessionCookie();
+    if (cookie?.value) return true;
+
+    const fetchImpl = options.fetchImpl || (typeof fetch !== 'undefined' ? fetch : null);
+    if (fetchImpl) {
+      try {
+        const res = await fetchImpl(ORIGIN + '/api/github/repositories', {
+          method: 'GET',
+          credentials: 'include',
+          headers: { Accept: 'application/json' }
+        });
+        if (res.ok) return true;
+        // 401 specifically indicates an invalid or expired session cookie.
+        if (res.status === 401) return false;
+        // 403 indicates an authorization, origin, or GitHub API rate limit issue, NOT a logged out user.
+        // We preserve authentication state and do not disconnect.
+        if (res.status === 403) return true;
+        throw failure('Server session check error', 'NETWORK_ERROR');
+      } catch (err) {
+        if (err?.code === 'NETWORK_ERROR') throw err;
+        throw failure('Could not connect to Relay to verify session.', 'NETWORK_ERROR');
+      }
+    }
+
+    return false;
+  }
+
+  async function login() {
+    const stateRes = await fetch(ORIGIN + '/api/auth/github/login');
+    if (!stateRes.ok) throw failure('Could not request login state from Relay', 'NETWORK_ERROR');
+    const { state, clientId, redirectUri: expectedRedirectUri } = await stateRes.json();
+
+    const authUrlTemplate = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=REDIRECT_URI_PLACEHOLDER&state=${state}`;
+
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: 'relay-ai-login',
+        authUrlTemplate,
+        redirectUri: expectedRedirectUri
+      }, async (response) => {
+        if (chrome.runtime.lastError) return reject(failure(chrome.runtime.lastError.message, 'LOGIN_FAILED'));
+        if (!response || response.error) return reject(failure(response?.error || 'Unknown error', 'LOGIN_FAILED'));
+
+        const url = new URL(response.callbackUrl);
+        const code = url.searchParams.get('code');
+        const returnedState = url.searchParams.get('state');
+
+        if (state !== returnedState) {
+          return reject(failure('Invalid OAuth state returned', 'LOGIN_FAILED'));
+        }
+
+        try {
+          const exchangeRes = await fetch(ORIGIN + '/api/auth/github/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              code,
+              state,
+              redirect_uri: response.redirectUri || expectedRedirectUri
+            })
+          });
+
+          if (!exchangeRes.ok) {
+            return reject(failure('Failed to exchange authorization code', 'LOGIN_FAILED'));
+          }
+          resolve(await exchangeRes.json());
+        } catch (err) {
+          reject(failure(err.message, 'LOGIN_FAILED'));
+        }
+      });
+    });
+  }
+
+  async function logout(options = {}) {
+    const fetchImpl = options.fetchImpl || (typeof fetch !== 'undefined' ? fetch : null);
+    if (!fetchImpl) return;
+    const headers = { ...(options.headers || {}) };
+    const cookie = await getSessionCookie();
+    if (cookie?.value && !headers['Cookie'] && !headers['cookie']) {
+      headers['Cookie'] = `relay_pm_session=${cookie.value}`;
+    }
+    const res = await fetchImpl(ORIGIN + '/api/auth/logout', { method: 'POST', credentials: 'include', headers });
+    if (!res.ok) throw failure('Could not log out', 'NETWORK_ERROR');
+  }
   async function send(message, context, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 55000);
@@ -26,8 +145,13 @@
       // Strict allowlist: even accidental extra UI fields/filenames are never sent.
       const payload = { message, context: Object.fromEntries(['host','owner','repository','url','pageType','issueNumber','pullRequestNumber','branch'].map(key => [key, context[key]])) };
       if (options.model) payload.model = options.model;
+      const headers = { 'Content-Type': 'application/json', Accept: 'application/json', ...(options.headers || {}) };
+      const cookie = await getSessionCookie();
+      if (cookie?.value && !headers['Cookie'] && !headers['cookie']) {
+        headers['Cookie'] = `relay_pm_session=${cookie.value}`;
+      }
       const response = await (options.fetchImpl || fetch)(ENDPOINT, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        method: 'POST', headers,
         credentials: 'include', redirect: 'error', cache: 'no-store',
         body: JSON.stringify(payload), signal: controller.signal
       });
@@ -51,25 +175,37 @@
       throw failure('Could not connect to Relay. Check your internet connection, sign in using Connect Relay, and allow the extension access to the Relay site.', 'NETWORK_ERROR');
     } finally { clearTimeout(timer); }
   }
-  async function createIssue(issuePlan, context) {
-    const response = await fetch(ENDPOINT.replace('/assistant', '/github/issues'), {
+  async function createIssue(issuePlan, context, options = {}) {
+    const fetchImpl = options.fetchImpl || fetch;
+    const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const cookie = await getSessionCookie();
+    if (cookie?.value && !headers['Cookie'] && !headers['cookie']) {
+      headers['Cookie'] = `relay_pm_session=${cookie.value}`;
+    }
+    const response = await fetchImpl(ENDPOINT.replace('/assistant', '/github/issues'), {
       method: 'POST', credentials: 'include',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ issuePlan, context })
     });
     return response;
   }
   
-  async function getRepositories() {
-    const response = await fetch(ENDPOINT.replace('/assistant', '/github/repositories'), {
-      method: 'POST', credentials: 'include',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
+  async function getRepositories(options = {}) {
+    const fetchImpl = options.fetchImpl || fetch;
+    const url = ENDPOINT.replace('/assistant', '/github/repositories');
+    const headers = { 'Accept': 'application/json', ...(options.headers || {}) };
+    const cookie = await getSessionCookie();
+    if (cookie?.value && !headers['Cookie'] && !headers['cookie']) {
+      headers['Cookie'] = `relay_pm_session=${cookie.value}`;
+    }
+    return await fetchImpl(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers
     });
-    return response;
   }
   
-  const api = Object.freeze({ send, connectionURL, ENDPOINT, createIssue, getRepositories });
+  const api = Object.freeze({ send, connectionURL, login, logout, checkAuth, ENDPOINT, createIssue, getRepositories });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RelayAIAssistant = api;
 })(globalThis);
