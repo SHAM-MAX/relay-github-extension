@@ -1218,6 +1218,48 @@ textarea:focus-visible {
   margin-top: 8px;
 }
 
+.relay-ai-top-recommendation {
+  background: rgba(14, 29, 53, 0.7);
+  border: 1px solid rgba(88, 166, 255, 0.4);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.relay-ai-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.relay-ai-badge-recommended {
+  background: rgba(46, 160, 67, 0.2);
+  color: #3fb950;
+  border: 1px solid rgba(46, 160, 67, 0.4);
+}
+
+.relay-ai-badge-insufficient {
+  background: rgba(210, 153, 34, 0.2);
+  color: #e3b341;
+  border: 1px solid rgba(210, 153, 34, 0.4);
+}
+
+.relay-ai-top-actions {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.relay-ai-btn-approved {
+  background: #238636 !important;
+  color: #ffffff !important;
+  border: 1px solid #2ea043 !important;
+}
+
 .relay-ai-assignee-manual-select {
   width: 100%;
   padding: 5px 8px;

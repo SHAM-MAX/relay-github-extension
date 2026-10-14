@@ -1039,3 +1039,183 @@ test('developer profile modal can be opened and saves updated profile', async ()
   assert.ok(profileSaved);
   assert.equal(typeof profileSaved.weeklyCapacityHours, 'number');
 });
+
+test('PM approval workflow: approves top recommended developer or overrides with manual eligible assignee', async () => {
+  let createdPayload = null;
+
+  const env = await panel({
+    checkAuth: async () => true,
+    createIssue: async (singlePlan) => {
+      createdPayload = singlePlan;
+      return {
+        ok: true,
+        json: async () => ({
+          results: [{
+            title: singlePlan.issues[0].title,
+            number: 105,
+            url: 'https://github.com/SHAM-MAX/new-kanban-board/issues/105',
+            status: 'success'
+          }]
+        })
+      };
+    }
+  });
+
+  env.scope.RelayAIAssistant.getAssignmentRecommendations = async () => ({
+    ok: true,
+    json: async () => ({
+      recommendations: [
+        {
+          githubUsername: 'sarah-lead',
+          overallScore: 94,
+          confidence: 'High',
+          rationale: 'Expert in system architecture with low active workload.',
+          criteria: {
+            technicalSkills: { score: 95 },
+            workloadAndEffort: { score: 90 },
+            repositoryFamiliarity: { score: 95 },
+            availabilityAndDeadlines: { score: 100 },
+            growthAndFairness: { score: 85 }
+          },
+          missingDataWarnings: []
+        },
+        {
+          githubUsername: 'alex-dev',
+          overallScore: 72,
+          confidence: 'Medium',
+          rationale: 'Capable developer with healthy capacity.',
+          criteria: {
+            technicalSkills: { score: 70 },
+            workloadAndEffort: { score: 80 },
+            repositoryFamiliarity: { score: 65 },
+            availabilityAndDeadlines: { score: 75 },
+            growthAndFairness: { score: 70 }
+          },
+          missingDataWarnings: []
+        }
+      ],
+      warnings: []
+    })
+  });
+
+  env.get('input').value = 'Feature request';
+  const sending = env.get('form').emit('submit');
+  await settle();
+
+  const proposedPlan = {
+    issues: [
+      { id: 'task-auth', title: 'Implement OAuth refresh', issue_type: 'feature', priority: 'High', body: 'Support token rotation' }
+    ]
+  };
+
+  env.resolveAI({
+    reply: 'Proposed plan',
+    issuePlan: proposedPlan,
+    context: { owner: 'SHAM-MAX', repository: 'new-kanban-board' }
+  });
+  await sending;
+  await settle();
+
+  const cards = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-issue-card'));
+  assert.equal(cards.length, 1);
+
+  // Top recommendation spotlight should be visible with Recommended badge
+  const topSpotlight = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-top-recommendation'));
+  assert.ok(topSpotlight);
+  assert.match(topSpotlight.textContent, /★ Recommended/);
+  assert.match(topSpotlight.textContent, /@sarah-lead/);
+  assert.match(topSpotlight.textContent, /94%/);
+
+  // Approve assignment button
+  const approveBtn = walk(topSpotlight).find(el => el.tagName === 'BUTTON' && el.textContent === 'Approve Assignment');
+  assert.ok(approveBtn);
+
+  // PM Approves top recommendation
+  await approveBtn.click();
+  await settle();
+
+  assert.equal(proposedPlan.issues[0].assignee, 'sarah-lead');
+  assert.equal(proposedPlan.issues[0].assignees.length, 1);
+  assert.equal(proposedPlan.issues[0].assignees[0], 'sarah-lead');
+
+  // Manual override: PM overrides using the manual select dropdown
+  const manualSelect = walk(cards[0]).find(el => el.tagName === 'SELECT' && el.classList.contains('relay-ai-assignee-manual-select'));
+  assert.ok(manualSelect);
+  manualSelect.value = 'alex-dev';
+  manualSelect.emit('change');
+  await settle();
+
+  assert.equal(proposedPlan.issues[0].assignee, 'alex-dev');
+  assert.equal(proposedPlan.issues[0].assignees.length, 1);
+  assert.equal(proposedPlan.issues[0].assignees[0], 'alex-dev');
+
+  // Click Create
+  const createBtn = walk(cards[0]).find(el => el.textContent === 'Create');
+  assert.ok(createBtn);
+  await createBtn.click();
+  await settle();
+
+  assert.ok(createdPayload);
+  assert.equal(createdPayload.issues[0].assignees.length, 1);
+  assert.equal(createdPayload.issues[0].assignees[0], 'alex-dev');
+  assert.equal(proposedPlan.issues[0]._created, true);
+});
+
+test('insufficient evidence displays clear notice and handles GitHub issue assignment failure cleanly', async () => {
+  let createdCalled = false;
+
+  const env = await panel({
+    checkAuth: async () => true,
+    createIssue: async () => {
+      createdCalled = true;
+      return {
+        ok: false,
+        status: 422,
+        json: async () => ({
+          error: 'GitHub API error: user cannot be assigned to issues in this repository'
+        })
+      };
+    }
+  });
+
+  env.scope.RelayAIAssistant.getAssignmentRecommendations = async () => ({
+    ok: true,
+    json: async () => ({
+      recommendations: [],
+      warnings: ['Insufficient permissions to list assignees for private organization']
+    })
+  });
+
+  env.get('input').value = 'Task';
+  const sending = env.get('form').emit('submit');
+  await settle();
+
+  env.resolveAI({
+    reply: 'Plan',
+    issuePlan: {
+      issues: [{ id: 'task-fail', title: 'Test issue', body: 'Details', assignee: 'unauthorized-user' }]
+    },
+    context: { owner: 'SHAM-MAX', repository: 'new-kanban-board' }
+  });
+  await sending;
+  await settle();
+
+  const cards = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-issue-card'));
+  assert.equal(cards.length, 1);
+
+  // Insufficient evidence notice displayed
+  const insufficientElem = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-assignment-insufficient'));
+  assert.ok(insufficientElem);
+  assert.match(insufficientElem.textContent, /Insufficient evidence/);
+
+  // Attempt creation which triggers 422 assignment error
+  const createBtn = walk(cards[0]).find(el => el.textContent === 'Create');
+  assert.ok(createBtn);
+  await createBtn.click();
+  await settle();
+
+  assert.equal(createdCalled, true);
+  const statusElem = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-issue-card-status-error'));
+  assert.ok(statusElem);
+  assert.match(statusElem.textContent, /cannot be assigned/);
+});

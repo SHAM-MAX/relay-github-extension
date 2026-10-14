@@ -643,7 +643,12 @@
           warningsDiv.hidden = true;
           assignmentSec.append(warningsDiv);
 
-          // Candidates container
+          // Top recommended spotlight container
+          const topRecContainer = document.createElement("div");
+          topRecContainer.className = "relay-ai-assignment-top-container";
+          assignmentSec.append(topRecContainer);
+
+          // Candidates container (other recommendations)
           const candidatesDiv = document.createElement("div");
           candidatesDiv.className = "relay-ai-assignment-candidates";
           assignmentSec.append(candidatesDiv);
@@ -658,12 +663,12 @@
           currentAssigneeLabel.textContent = chosen ? `Selected Assignee: @${chosen}` : "No assignee selected (advisory)";
           currentAssigneeBox.append(currentAssigneeLabel);
 
-          // Manual assignee select dropdown
+          // Manual assignee select dropdown ("Choose another developer")
           const manualSelect = document.createElement("select");
           manualSelect.className = "relay-ai-assignee-manual-select";
           const defaultOpt = document.createElement("option");
           defaultOpt.value = "";
-          defaultOpt.textContent = "-- Select Eligible Assignee or Choose Recommended --";
+          defaultOpt.textContent = "-- Choose another developer / Override --";
           manualSelect.append(defaultOpt);
 
           manualSelect.addEventListener("change", () => {
@@ -719,6 +724,7 @@
           }
 
           function renderRecommendationsUI(recommendations, warnings) {
+            topRecContainer.replaceChildren();
             candidatesDiv.replaceChildren();
             warningsDiv.replaceChildren();
 
@@ -746,12 +752,68 @@
 
             if (!recommendations || recommendations.length === 0) {
               const emptyText = document.createElement("div");
-              emptyText.className = "relay-ai-assignment-loading";
-              emptyText.textContent = "No eligible repository assignees or recommendations found.";
+              emptyText.className = "relay-ai-assignment-loading relay-ai-assignment-insufficient";
+              emptyText.textContent = "Insufficient evidence: No eligible repository assignees or recommendations found.";
               candidatesDiv.append(emptyText);
               return;
             }
 
+            // Check if top candidate has insufficient evidence (e.g. low confidence or missing critical evidence)
+            const topCandidate = recommendations[0];
+            const isInsufficientEvidence = topCandidate.confidence === 'Low' && (topCandidate.overallScore <= 35 || (topCandidate.missingDataWarnings && topCandidate.missingDataWarnings.length >= 2));
+
+            // Render top recommendation spotlight
+            const topSpotlight = document.createElement("div");
+            topSpotlight.className = "relay-ai-top-recommendation";
+
+            const topHeader = document.createElement("div");
+            topHeader.className = "relay-ai-candidate-top";
+
+            const recBadge = document.createElement("span");
+            recBadge.className = isInsufficientEvidence ? "relay-ai-badge relay-ai-badge-insufficient" : "relay-ai-badge relay-ai-badge-recommended";
+            recBadge.textContent = isInsufficientEvidence ? "Insufficient Evidence" : "★ Recommended";
+
+            const topUser = document.createElement("span");
+            topUser.className = "relay-ai-candidate-user";
+            topUser.textContent = `@${topCandidate.githubUsername}`;
+
+            const topScoreBadge = document.createElement("span");
+            topScoreBadge.className = "relay-ai-candidate-score-badge";
+            topScoreBadge.textContent = `${topCandidate.overallScore}% (${topCandidate.confidence} conf)`;
+
+            topHeader.append(recBadge, topUser, topScoreBadge);
+
+            const topExplanation = document.createElement("p");
+            topExplanation.className = "relay-ai-candidate-rationale";
+            topExplanation.textContent = topCandidate.rationale || "Evaluated based on balanced team criteria.";
+
+            // Action row: Approve assignment button
+            const topActionRow = document.createElement("div");
+            topActionRow.className = "relay-ai-top-actions";
+
+            const approveBtn = document.createElement("button");
+            approveBtn.type = "button";
+            approveBtn.className = "relay-ai-btn relay-ai-btn-sm " + (chosen === topCandidate.githubUsername ? "relay-ai-btn-approved" : "relay-ai-btn-primary");
+            approveBtn.textContent = chosen === topCandidate.githubUsername ? "✓ Assignment Approved" : "Approve Assignment";
+            approveBtn.addEventListener("click", () => {
+              if (chosen === topCandidate.githubUsername) {
+                // Deselect / withdraw approval
+                issue.assignee = null;
+                issue.assignees = [];
+              } else {
+                // Approve top recommendation
+                issue.assignee = topCandidate.githubUsername;
+                issue.assignees = [topCandidate.githubUsername];
+              }
+              if (typeof saveConversation === "function") saveConversation();
+              refreshCard();
+            });
+
+            topActionRow.append(approveBtn);
+            topSpotlight.append(topHeader, topExplanation, topActionRow);
+            topRecContainer.append(topSpotlight);
+
+            // Render all candidates (including breakdown & warnings)
             recommendations.slice(0, 3).forEach((candidate) => {
               const candCard = document.createElement("div");
               candCard.className = "relay-ai-candidate-card";
