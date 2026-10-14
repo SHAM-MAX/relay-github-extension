@@ -5,7 +5,9 @@
   "description": "Relay AI Project Manager for GitHub.",
   "minimum_chrome_version": "116",
   "permissions": [
-    "storage"
+    "storage",
+    "identity",
+    "cookies"
   ],
   "host_permissions": [
     "https://github.com/*",

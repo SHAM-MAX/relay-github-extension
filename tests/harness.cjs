@@ -96,7 +96,7 @@ function event() {
   const listeners = [];
   return { listeners, addListener: callback => listeners.push(callback), emit: (...args) => listeners.map(callback => callback(...args)) };
 }
-function environment({ panel = false, url = 'https://github.com/SHAM-MAX/new-kanban-board' } = {}) {
+function environment({ panel = false, url = 'https://github.com/SHAM-MAX/new-kanban-board', storageData = {} } = {}) {
   const document = documentFixture(panel);
   const timers = new Map(); const intervals = []; const observers = []; const sent = [];
   let nextTimer = 1;
@@ -109,7 +109,34 @@ function environment({ panel = false, url = 'https://github.com/SHAM-MAX/new-kan
     windows: { getCurrent: async () => ({ id: 1 }) },
     action: { onClicked: event(), setBadgeText() {}, setTitle() {} },
     sidePanel: { open: async () => {}, setOptions: async () => {} },
-    storage: { local: { get: (keys, cb) => cb && cb({}), set: (obj, cb) => cb && cb(), remove: (key, cb) => cb && cb() } }
+    storage: {
+      local: {
+        get: (keys, cb) => {
+          let res = {};
+          if (typeof keys === 'string') {
+            res[keys] = storageData[keys];
+          } else if (Array.isArray(keys)) {
+            for (const k of keys) res[k] = storageData[k];
+          } else if (keys && typeof keys === 'object') {
+            for (const k of Object.keys(keys)) res[k] = storageData[k] !== undefined ? storageData[k] : keys[k];
+          } else {
+            res = { ...storageData };
+          }
+          if (cb) cb(res);
+          return Promise.resolve(res);
+        },
+        set: (obj, cb) => {
+          Object.assign(storageData, obj);
+          if (cb) cb();
+          return Promise.resolve();
+        },
+        remove: (key, cb) => {
+          delete storageData[key];
+          if (cb) cb();
+          return Promise.resolve();
+        }
+      }
+    }
   };
   const scope = vm.createContext({
     URL, console, document, window, location, chrome, fetch,

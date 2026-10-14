@@ -171,6 +171,13 @@
         parts[0].toLowerCase()
       )
     ) {
+      if (isAuthPage(location.href)) {
+        return {
+          ...context,
+          pageType: "auth"
+        };
+      }
+
       return context;
     }
 
@@ -642,6 +649,64 @@
 
 
   /* =========================================================
+     GITHUB AUTH / OAUTH PAGE CHECK
+     ========================================================= */
+
+  function isAuthPage(url) {
+
+    if (!url) {
+      return false;
+    }
+
+    try {
+
+      const location =
+        new URL(url);
+
+      if (
+        location.protocol !== "https:" ||
+        location.hostname !== "github.com"
+      ) {
+        return false;
+      }
+
+      const parts = location.pathname
+        .split("/")
+        .filter(Boolean)
+        .map(p => decode(p).toLowerCase());
+
+      if (!parts.length) {
+        return false;
+      }
+
+      const first = parts[0];
+
+      if (
+        first === "login" ||
+        first === "session" ||
+        first === "sessions" ||
+        first === "oauth"
+      ) {
+        return true;
+      }
+
+      if (
+        parts.includes("oauth") &&
+        (parts.includes("authorize") || parts.includes("callback"))
+      ) {
+        return true;
+      }
+
+      return false;
+
+    } catch {
+
+      return false;
+    }
+  }
+
+
+  /* =========================================================
      HUMAN READABLE DESCRIPTION
      ========================================================= */
 
@@ -735,7 +800,10 @@
         "Security",
 
       insights:
-        "Insights"
+        "Insights",
+
+      auth:
+        "GitHub authentication"
     };
 
 
@@ -759,6 +827,8 @@
     describe,
 
     isGitHub,
+
+    isAuthPage,
 
     getCurrentTab,
 

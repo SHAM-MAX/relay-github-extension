@@ -40,13 +40,15 @@ function updateRelayForTab(tabId, url) {
 
   const enabled = isGitHub(url);
 
-  chrome.sidePanel.setOptions({
-    tabId,
-    path: "panel.html",
-    enabled
-  }).catch(() => {
-    // Tab may have disappeared.
-  });
+  if (chrome.sidePanel?.setOptions) {
+    chrome.sidePanel.setOptions({
+      tabId,
+      path: "panel.html",
+      enabled
+    }).catch(() => {
+      // Tab may have disappeared.
+    });
+  }
 }
 
 
@@ -160,6 +162,29 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onMessage.addListener(
   (message, sender, respond) => {
 
+    if (message?.type === "relay-ai-login") {
+      try {
+        const redirectUri = chrome.identity.getRedirectURL();
+        if (message.redirectUri && message.redirectUri !== redirectUri) {
+          respond({
+            error: `Extension ID mismatch: extension generated "${redirectUri}" but backend expects "${message.redirectUri}". Ensure RELAY_EXTENSION_ID matches the installed extension ID.`
+          });
+          return true;
+        }
+        const authUrl = message.authUrlTemplate.replace('REDIRECT_URI_PLACEHOLDER', encodeURIComponent(redirectUri));
+        chrome.identity.launchWebAuthFlow({ url: authUrl, interactive: true }, (callbackUrl) => {
+          if (chrome.runtime.lastError) {
+            respond({ error: chrome.runtime.lastError.message });
+          } else {
+            respond({ callbackUrl, redirectUri });
+          }
+        });
+      } catch (err) {
+        respond({ error: err.message });
+      }
+      return true; // Keep channel open for async response
+    }
+
     if (
       message?.type !==
       "relay-ai-open-panel"
@@ -202,6 +227,13 @@ chrome.runtime.onMessage.addListener(
        --------------------------------------------- */
 
     try {
+      if (!chrome.sidePanel?.open) {
+        respond({
+          ok: false,
+          error: "Side panel not supported or permitted in this context."
+        });
+        return false;
+      }
 
       chrome.sidePanel.open({
         tabId
@@ -211,12 +243,13 @@ chrome.runtime.onMessage.addListener(
          * Configure the panel AFTER it has opened.
          */
 
-        return chrome.sidePanel.setOptions({
-          tabId,
-          path: "panel.html",
-          enabled: true
-        });
-
+        if (chrome.sidePanel?.setOptions) {
+          return chrome.sidePanel.setOptions({
+            tabId,
+            path: "panel.html",
+            enabled: true
+          });
+        }
       }).then(() => {
 
         respond({

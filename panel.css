@@ -539,7 +539,7 @@ textarea:focus-visible {
 /* 9. FOOTER NOTE */
 .relay-ai-shortcut { display: none; }
 .relay-ai-demo-note {
-  flex: 0 0 50px;
+  flex: 1 1 auto;
   height: 50px;
   display: flex;
   justify-content: center;
@@ -797,33 +797,107 @@ textarea:focus-visible {
 
 
 .relay-ai-btn-sm {
-  padding: 6px 12px;
+  padding: 5px 10px;
   font-size: 11px;
-  height: 28px;
+  height: 26px;
+  border-radius: 6px;
+}
+.relay-ai-btn-danger-outline {
+  background: transparent;
+  border: 1px solid rgba(255, 110, 110, 0.4);
+  color: #ff9b9b;
+}
+.relay-ai-btn-danger-outline:hover:not(:disabled) {
+  background: rgba(255, 110, 110, 0.15);
+  border-color: #ff8585;
+}
+.relay-ai-btn-success {
+  background: #238636;
+  border: 1px solid #2ea043;
+  color: #ffffff;
+}
+.relay-ai-btn-success:hover:not(:disabled) {
+  background: #2ea043;
 }
 .relay-ai-issue-card-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid rgba(137, 183, 244, 0.15);
   justify-content: flex-end;
+  align-items: center;
+}
+.relay-ai-issue-card-status {
+  margin-right: auto;
+  font-size: 11px;
+  color: #9cb3d8;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.relay-ai-issue-card-status-error {
+  color: #ff8e8e;
+}
+.relay-ai-issue-card-status-success {
+  color: #7ee787;
+  font-weight: 500;
 }
 .relay-ai-issue-edit-form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  margin-top: 8px;
 }
-.relay-ai-issue-edit-title,
-.relay-ai-issue-edit-labels,
-.relay-ai-issue-edit-deps,
-.relay-ai-issue-edit-type,
-.relay-ai-issue-edit-priority {
-  width: 100%;
+.relay-ai-issue-edit-label-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
-.relay-ai-issue-edit-body {
+.relay-ai-issue-edit-label-text {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #8da4c8;
+}
+.relay-ai-issue-edit-input {
   width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(8, 16, 29, 0.85);
+  border: 1px solid rgba(126, 168, 222, 0.28);
+  color: #edf4ff;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+.relay-ai-issue-edit-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.relay-ai-issue-edit-textarea {
+  min-height: 70px;
   resize: vertical;
+  line-height: 1.4;
+  font-family: inherit;
+}
+.relay-ai-issue-edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.relay-ai-issue-edit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.relay-ai-issue-cancel-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #ffb7c8;
 }
 
 /* Gear Menu and Footer layout */
@@ -979,4 +1053,205 @@ textarea:focus-visible {
   font-size: 12px;
   display: flex;
   justify-content: space-between;
+}
+
+/* SUBVIEW UTILITIES (REPLACES INLINE STYLES FOR CSP) */
+.relay-ai-btn-full { width: 100%; }
+.relay-ai-mb-12 { margin-bottom: 12px; }
+
+.relay-ai-about-content { text-align: center; padding-top: 40px; }
+.relay-ai-about-mark { width: 60px; height: 60px; margin: 0 auto 16px; }
+.relay-ai-about-title { margin-bottom: 8px; font-size: 18px; color: white; }
+.relay-ai-about-desc { color: var(--relay-ai-text-secondary); margin-bottom: 16px; }
+.relay-ai-about-version { color: var(--relay-ai-text-secondary); font-size: 12px; }
+
+.relay-ai-auth-link { cursor: pointer; }
+.relay-ai-auth-status { color: var(--relay-ai-text-secondary); }
+
+/* =========================================================
+   DEVELOPER ASSIGNMENT INTELLIGENCE
+   ========================================================= */
+
+.relay-ai-assignment-section {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(14, 25, 45, 0.55);
+  border: 1px solid rgba(126, 168, 222, 0.2);
+}
+
+.relay-ai-assignment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.relay-ai-assignment-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #a4c2ee;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.relay-ai-assignment-loading {
+  font-size: 11px;
+  color: #7d96bd;
+  font-style: italic;
+  padding: 6px 0;
+}
+
+.relay-ai-assignment-warnings {
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.relay-ai-assignment-warning {
+  font-size: 10.5px;
+  color: #ffb86c;
+  background: rgba(255, 184, 108, 0.12);
+  border-left: 3px solid #ffb86c;
+  padding: 4px 6px;
+  border-radius: 0 4px 4px 0;
+}
+
+.relay-ai-assignment-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.relay-ai-candidate-card {
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(126, 168, 222, 0.2);
+  background: rgba(19, 32, 54, 0.7);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.relay-ai-candidate-card:hover {
+  border-color: rgba(140, 190, 255, 0.4);
+  background: rgba(25, 42, 70, 0.85);
+}
+
+.relay-ai-candidate-selected {
+  border-color: #388bfd !important;
+  background: rgba(56, 139, 253, 0.18) !important;
+  box-shadow: 0 0 0 1px #388bfd;
+}
+
+.relay-ai-candidate-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.relay-ai-candidate-user {
+  font-size: 12px;
+  font-weight: 600;
+  color: #edf4ff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.relay-ai-candidate-score-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(56, 139, 253, 0.2);
+  color: #79c0ff;
+  border: 1px solid rgba(56, 139, 253, 0.35);
+}
+
+.relay-ai-candidate-conf {
+  font-size: 9.5px;
+  color: #8da4c8;
+  margin-left: 4px;
+}
+
+.relay-ai-candidate-rationale {
+  margin: 4px 0 0 0;
+  font-size: 11px;
+  color: #bcd0ed;
+  line-height: 1.35;
+}
+
+.relay-ai-candidate-breakdown-toggle {
+  font-size: 10px;
+  color: #58a6ff;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 5px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.relay-ai-candidate-breakdown {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(126, 168, 222, 0.2);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px 8px;
+  font-size: 10px;
+  color: #9cb3d8;
+}
+
+.relay-ai-breakdown-item strong {
+  color: #d2e3fc;
+}
+
+.relay-ai-candidate-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.relay-ai-assignee-manual-select {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(8, 16, 29, 0.85);
+  border: 1px solid rgba(126, 168, 222, 0.28);
+  color: #edf4ff;
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.relay-ai-profile-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.relay-ai-profile-modal {
+  width: 90%;
+  max-width: 420px;
+  background: #0d1527;
+  border: 1px solid rgba(126, 168, 222, 0.3);
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.relay-ai-profile-modal h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: #edf4ff;
 }

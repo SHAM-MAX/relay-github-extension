@@ -83,9 +83,10 @@
   async function login() {
     const stateRes = await fetch(ORIGIN + '/api/auth/github/login');
     if (!stateRes.ok) throw failure('Could not request login state from Relay', 'NETWORK_ERROR');
-    const { state, clientId, redirectUri: expectedRedirectUri } = await stateRes.json();
+    const { state, clientId, redirectUri: expectedRedirectUri, scope } = await stateRes.json();
 
-    const authUrlTemplate = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=REDIRECT_URI_PLACEHOLDER&state=${state}`;
+    const oauthScope = scope || 'public_repo';
+    const authUrlTemplate = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=REDIRECT_URI_PLACEHOLDER&state=${state}&scope=${encodeURIComponent(oauthScope)}`;
 
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage({
@@ -204,8 +205,74 @@
       headers
     });
   }
+
+  async function getAssignmentRecommendations(task, context, options = {}) {
+    const fetchImpl = options.fetchImpl || fetch;
+    const owner = encodeURIComponent(context?.owner || '');
+    const repo = encodeURIComponent(context?.repository || '');
+    const url = ENDPOINT.replace('/assistant', `/pm/assignment/recommendations?owner=${owner}&repo=${repo}`);
+    const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const cookie = await getSessionCookie();
+    if (cookie?.value && !headers['Cookie'] && !headers['cookie']) {
+      headers['Cookie'] = `relay_pm_session=${cookie.value}`;
+    }
+    return await fetchImpl(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({ task, owner: context?.owner, repo: context?.repository })
+    });
+  }
+
+  async function getDeveloperProfile(context, options = {}) {
+    const fetchImpl = options.fetchImpl || fetch;
+    const owner = encodeURIComponent(context?.owner || '');
+    const repo = encodeURIComponent(context?.repository || '');
+    const userQuery = options.userId ? `&userId=${encodeURIComponent(options.userId)}` : '';
+    const url = ENDPOINT.replace('/assistant', `/pm/assignment/profile?owner=${owner}&repo=${repo}${userQuery}`);
+    const headers = { 'Accept': 'application/json', ...(options.headers || {}) };
+    const cookie = await getSessionCookie();
+    if (cookie?.value && !headers['Cookie'] && !headers['cookie']) {
+      headers['Cookie'] = `relay_pm_session=${cookie.value}`;
+    }
+    return await fetchImpl(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers
+    });
+  }
+
+  async function upsertDeveloperProfile(profileData, context, options = {}) {
+    const fetchImpl = options.fetchImpl || fetch;
+    const owner = encodeURIComponent(context?.owner || '');
+    const repo = encodeURIComponent(context?.repository || '');
+    const url = ENDPOINT.replace('/assistant', `/pm/assignment/profile?owner=${owner}&repo=${repo}`);
+    const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const cookie = await getSessionCookie();
+    if (cookie?.value && !headers['Cookie'] && !headers['cookie']) {
+      headers['Cookie'] = `relay_pm_session=${cookie.value}`;
+    }
+    return await fetchImpl(url, {
+      method: 'PUT',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({ ...profileData, owner: context?.owner, repo: context?.repository })
+    });
+  }
   
-  const api = Object.freeze({ send, connectionURL, login, logout, checkAuth, ENDPOINT, createIssue, getRepositories });
+  const api = Object.freeze({
+    send,
+    connectionURL,
+    login,
+    logout,
+    checkAuth,
+    ENDPOINT,
+    createIssue,
+    getRepositories,
+    getAssignmentRecommendations,
+    getDeveloperProfile,
+    upsertDeveloperProfile
+  });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RelayAIAssistant = api;
 })(globalThis);

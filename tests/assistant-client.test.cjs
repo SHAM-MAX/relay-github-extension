@@ -147,3 +147,80 @@ test('getRepositories includes session credentials and synchronizes partitioned 
   }
 });
 
+test('createIssue sends issuePlan and context to backend with credentials and cookies', async () => {
+  let reqUrl, reqOptions;
+  const mockFetch = async (url, opts) => {
+    reqUrl = url;
+    reqOptions = opts;
+    return response(200, {
+      results: [{ title: 'Single Ticket', number: 12, url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/issues/12', status: 'success' }]
+    });
+  };
+
+  const plan = { issues: [{ id: '1', title: 'Single Ticket', body: 'Issue details', assignees: ['alice'] }] };
+  const targetContext = { owner: 'SHAM-MAX', repository: 'GitHub-Kanban-Practice' };
+
+  const res = await client.createIssue(plan, targetContext, { fetchImpl: mockFetch });
+  assert.equal(reqUrl, 'https://relay-standalone-backend.onrender.com/api/github/issues');
+  assert.equal(reqOptions.method, 'POST');
+  assert.equal(reqOptions.credentials, 'include');
+  assert.equal(reqOptions.headers['Content-Type'], 'application/json');
+
+  const payload = JSON.parse(reqOptions.body);
+  assert.deepEqual(payload.issuePlan, plan);
+  assert.deepEqual(payload.context, targetContext);
+
+  const data = await res.json();
+  assert.equal(data.results[0].number, 12);
+  assert.equal(data.results[0].status, 'success');
+});
+
+test('getAssignmentRecommendations calls backend recommendations with context and task', async () => {
+  let reqUrl, reqOptions;
+  const mockFetch = async (url, opts) => {
+    reqUrl = url;
+    reqOptions = opts;
+    return response(200, { recommendations: [{ githubUsername: 'alice', overallScore: 88 }] });
+  };
+
+  const task = { title: 'Implement feature', requiredSkills: ['node.js'] };
+  const context = { owner: 'SHAM-MAX', repository: 'GitHub-Kanban-Practice' };
+  const res = await client.getAssignmentRecommendations(task, context, { fetchImpl: mockFetch });
+
+  assert.equal(reqUrl, 'https://relay-standalone-backend.onrender.com/api/pm/assignment/recommendations?owner=SHAM-MAX&repo=GitHub-Kanban-Practice');
+  assert.equal(reqOptions.method, 'POST');
+  const payload = JSON.parse(reqOptions.body);
+  assert.deepEqual(payload.task, task);
+  assert.equal(payload.owner, 'SHAM-MAX');
+  assert.equal(payload.repo, 'GitHub-Kanban-Practice');
+
+  const data = await res.json();
+  assert.equal(data.recommendations[0].githubUsername, 'alice');
+});
+
+test('getDeveloperProfile and upsertDeveloperProfile call backend profile endpoint', async () => {
+  let calls = [];
+  const mockFetch = async (url, opts) => {
+    calls.push({ url, opts });
+    if (opts.method === 'GET') {
+      return response(200, { profile: { declared_skills: ['react'], weekly_capacity_hours: 40 } });
+    }
+    return response(200, { profile: { ...JSON.parse(opts.body) } });
+  };
+
+  const context = { owner: 'SHAM-MAX', repository: 'GitHub-Kanban-Practice' };
+
+  // GET
+  const getRes = await client.getDeveloperProfile(context, { fetchImpl: mockFetch });
+  assert.equal(calls[0].url, 'https://relay-standalone-backend.onrender.com/api/pm/assignment/profile?owner=SHAM-MAX&repo=GitHub-Kanban-Practice');
+  assert.equal(calls[0].opts.method, 'GET');
+  const getData = await getRes.json();
+  assert.deepEqual(getData.profile.declared_skills, ['react']);
+
+  // PUT
+  const putRes = await client.upsertDeveloperProfile({ declaredSkills: ['vue'], weeklyCapacityHours: 30 }, context, { fetchImpl: mockFetch });
+  assert.equal(calls[1].url, 'https://relay-standalone-backend.onrender.com/api/pm/assignment/profile?owner=SHAM-MAX&repo=GitHub-Kanban-Practice');
+  assert.equal(calls[1].opts.method, 'PUT');
+  const putData = await putRes.json();
+  assert.deepEqual(putData.profile.declaredSkills, ['vue']);
+});

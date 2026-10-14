@@ -38,6 +38,9 @@
     "error",
     "context-error",
     "connect",
+    "logout",
+    "auth-unauthenticated",
+    "auth-authenticated",
     "close",
     "model-selector",
     "custom-picker-trigger",
@@ -252,7 +255,11 @@
     author.textContent =
       message.role === "user"
         ? "You"
-        : "✦ Relay AI";
+        : message.role === "system"
+          ? "✦ Relay System"
+          : message.role === "error"
+            ? "✦ Relay Notice"
+            : "✦ Relay AI";
 
     const contextLabel =
       document.createElement("span");
@@ -298,7 +305,7 @@
      * Never render assistant/user text as HTML.
      */
     body.textContent =
-      message.text;
+      message.text || message.content || "";
 
     article.append(
       label,
@@ -342,151 +349,887 @@
       planTitle.textContent = "Proposed GitHub Issues";
       planContainer.append(planTitle);
 
-      for (const issue of message.issuePlan.issues) {
-        const card = document.createElement("div");
-        card.className = "relay-ai-issue-card";
+      const cardsContainer = document.createElement("div");
+      cardsContainer.className = "relay-ai-issue-cards";
+      planContainer.append(cardsContainer);
 
-        const header = document.createElement("div");
-        header.className = "relay-ai-issue-header";
+      const bulkActions = document.createElement("div");
+      bulkActions.className = "relay-ai-issue-actions";
 
-        const title = document.createElement("h5");
-        title.className = "relay-ai-issue-title";
-        let titleText = issue.title || "Untitled Issue";
-        if (issue.id) {
-          titleText = `#${issue.id} ` + titleText;
+      const bulkCancelBtn = document.createElement("button");
+      bulkCancelBtn.className = "relay-ai-btn relay-ai-btn-secondary";
+      bulkCancelBtn.textContent = "Cancel All";
+      bulkCancelBtn.type = "button";
+
+      const bulkCreateBtn = document.createElement("button");
+      bulkCreateBtn.className = "relay-ai-btn relay-ai-btn-primary";
+      bulkCreateBtn.type = "button";
+
+      const bulkInfoMsg = document.createElement("div");
+      bulkInfoMsg.className = "relay-ai-issue-info";
+      bulkInfoMsg.hidden = true;
+
+      function updateBulkControls() {
+        const remainingIssues = (message.issuePlan.issues || []).filter(issue => !issue._created);
+        const count = remainingIssues.length;
+        if (count === 0) {
+          bulkActions.hidden = true;
+          bulkInfoMsg.hidden = true;
+        } else {
+          bulkActions.hidden = false;
+          bulkCreateBtn.textContent = `Create ${count} Issue${count === 1 ? '' : 's'}`;
         }
-        title.textContent = titleText;
-
-        const meta = document.createElement("div");
-        meta.className = "relay-ai-issue-meta";
-
-        if (issue.issue_type) {
-          const typeBadge = document.createElement("span");
-          typeBadge.className = "relay-ai-issue-badge relay-ai-issue-type";
-          typeBadge.textContent = issue.issue_type;
-          meta.append(typeBadge);
-        }
-
-        if (issue.priority) {
-          const priorityBadge = document.createElement("span");
-          priorityBadge.className = "relay-ai-issue-badge relay-ai-issue-priority";
-          priorityBadge.textContent = issue.priority;
-          meta.append(priorityBadge);
-        }
-
-        header.append(title, meta);
-
-        const body = document.createElement("p");
-        body.className = "relay-ai-issue-desc";
-        body.textContent = issue.body || "";
-
-        card.append(header, body);
-
-        if ((issue.labels && issue.labels.length) || (issue.dependencies && issue.dependencies.length)) {
-          const footer = document.createElement("div");
-          footer.className = "relay-ai-issue-footer";
-
-          if (issue.labels && issue.labels.length) {
-            const labelsDiv = document.createElement("div");
-            labelsDiv.className = "relay-ai-issue-labels";
-                        for (const rawLabel of issue.labels) {
-              const parts = typeof rawLabel === 'string' ? rawLabel.split(',') : [rawLabel];
-              for (const p of parts) {
-                const clean = (typeof p === 'string' ? p.trim() : p);
-                if (!clean) continue;
-                const span = document.createElement("span");
-                span.className = "relay-ai-issue-label";
-                span.textContent = clean;
-                labelsDiv.append(span);
-              }
-            }
-            footer.append(labelsDiv);
-          }
-
-          if (issue.dependencies && issue.dependencies.length) {
-            const depsDiv = document.createElement("div");
-            depsDiv.className = "relay-ai-issue-deps";
-            depsDiv.textContent = "Depends on: " + issue.dependencies.join(", ");
-            footer.append(depsDiv);
-          }
-          
-          card.append(footer);
-        }
-
-        planContainer.append(card);
       }
 
-      const actions = document.createElement("div");
-      actions.className = "relay-ai-issue-actions";
+      function renderIssueCard(issue, issueIndex) {
+        const card = document.createElement("div");
+        card.className = "relay-ai-issue-card";
+        card.dataset.issueId = issue.id || String(issueIndex);
 
-      const cancelBtn = document.createElement("button");
-      cancelBtn.className = "relay-ai-btn relay-ai-btn-secondary";
-      cancelBtn.textContent = "Cancel";
-      cancelBtn.type = "button";
-      
-      const createBtn = document.createElement("button");
-      createBtn.className = "relay-ai-btn relay-ai-btn-primary";
-      const numIssues = message.issuePlan.issues.length;
-      createBtn.textContent = `Create ${numIssues} Issue${numIssues === 1 ? '' : 's'}`;
-      createBtn.type = "button";
+        let isEditing = false;
+        let isConfirmingCancel = false;
 
-      const infoMsg = document.createElement("div");
-      infoMsg.className = "relay-ai-issue-info";
-      infoMsg.textContent = "GitHub Issue creation will be available in the next step.";
-      infoMsg.hidden = true;
+        function refreshCard() {
+          card.replaceChildren();
 
-      createBtn.addEventListener("click", async () => {
-        infoMsg.hidden = false;
-        infoMsg.textContent = "Creating issues...";
-        infoMsg.className = "relay-ai-issue-info";
-        createBtn.disabled = true;
-        cancelBtn.disabled = true;
+          if (issue._created) {
+            // Already created state
+            const titleLink = document.createElement("a");
+            titleLink.className = "relay-ai-issue-title";
+            titleLink.href = issue._createdUrl || "#";
+            titleLink.target = "_blank";
+            titleLink.textContent = "✅ #" + (issue._createdNumber || "") + " " + (issue.title || "Untitled Issue");
+
+            const createdStatus = document.createElement("div");
+            createdStatus.className = "relay-ai-issue-card-status relay-ai-issue-card-status-success";
+            createdStatus.textContent = "Created in GitHub";
+            createdStatus.style.marginTop = "6px";
+
+            card.append(titleLink, createdStatus);
+            return;
+          }
+
+          if (isEditing) {
+            // Edit form view
+            const editForm = document.createElement("div");
+            editForm.className = "relay-ai-issue-edit-form";
+
+            // Title field
+            const titleRow = document.createElement("div");
+            titleRow.className = "relay-ai-issue-edit-label-row";
+            const titleLabel = document.createElement("span");
+            titleLabel.className = "relay-ai-issue-edit-label-text";
+            titleLabel.textContent = "Title";
+            const titleInput = document.createElement("input");
+            titleInput.type = "text";
+            titleInput.className = "relay-ai-issue-edit-input";
+            titleInput.value = issue.title || "";
+            titleRow.append(titleLabel, titleInput);
+
+            // Grid for Type & Priority
+            const gridRow = document.createElement("div");
+            gridRow.className = "relay-ai-issue-edit-grid";
+
+            const typeRow = document.createElement("div");
+            typeRow.className = "relay-ai-issue-edit-label-row";
+            const typeLabel = document.createElement("span");
+            typeLabel.className = "relay-ai-issue-edit-label-text";
+            typeLabel.textContent = "Type";
+            const typeInput = document.createElement("input");
+            typeInput.type = "text";
+            typeInput.className = "relay-ai-issue-edit-input";
+            typeInput.value = issue.issue_type || "task";
+            typeRow.append(typeLabel, typeInput);
+
+            const prioRow = document.createElement("div");
+            prioRow.className = "relay-ai-issue-edit-label-row";
+            const prioLabel = document.createElement("span");
+            prioLabel.className = "relay-ai-issue-edit-label-text";
+            prioLabel.textContent = "Priority";
+            const prioInput = document.createElement("input");
+            prioInput.type = "text";
+            prioInput.className = "relay-ai-issue-edit-input";
+            prioInput.value = issue.priority || "Medium";
+            prioRow.append(prioLabel, prioInput);
+
+            gridRow.append(typeRow, prioRow);
+
+            // Description / Body textarea
+            const bodyRow = document.createElement("div");
+            bodyRow.className = "relay-ai-issue-edit-label-row";
+            const bodyLabel = document.createElement("span");
+            bodyLabel.className = "relay-ai-issue-edit-label-text";
+            bodyLabel.textContent = "Description / Acceptance Criteria";
+            const bodyTextarea = document.createElement("textarea");
+            bodyTextarea.className = "relay-ai-issue-edit-input relay-ai-issue-edit-textarea";
+            bodyTextarea.value = issue.body || "";
+            bodyRow.append(bodyLabel, bodyTextarea);
+
+            // Labels field
+            const labelsRow = document.createElement("div");
+            labelsRow.className = "relay-ai-issue-edit-label-row";
+            const labelsLabel = document.createElement("span");
+            labelsLabel.className = "relay-ai-issue-edit-label-text";
+            labelsLabel.textContent = "Labels (comma-separated)";
+            const labelsInput = document.createElement("input");
+            labelsInput.type = "text";
+            labelsInput.className = "relay-ai-issue-edit-input";
+            labelsInput.value = Array.isArray(issue.labels) ? issue.labels.join(", ") : "";
+            labelsRow.append(labelsLabel, labelsInput);
+
+            // Assignees field
+            const assigneesRow = document.createElement("div");
+            assigneesRow.className = "relay-ai-issue-edit-label-row";
+            const assigneesLabel = document.createElement("span");
+            assigneesLabel.className = "relay-ai-issue-edit-label-text";
+            assigneesLabel.textContent = "Assignee (GitHub username)";
+            const assigneesInput = document.createElement("input");
+            assigneesInput.type = "text";
+            assigneesInput.className = "relay-ai-issue-edit-input";
+            assigneesInput.value = Array.isArray(issue.assignees) ? issue.assignees.join(", ") : (issue.assignee || "");
+            assigneesRow.append(assigneesLabel, assigneesInput);
+
+            // Dependencies field
+            const depsRow = document.createElement("div");
+            depsRow.className = "relay-ai-issue-edit-label-row";
+            const depsLabel = document.createElement("span");
+            depsLabel.className = "relay-ai-issue-edit-label-text";
+            depsLabel.textContent = "Dependencies (comma-separated IDs)";
+            const depsInput = document.createElement("input");
+            depsInput.type = "text";
+            depsInput.className = "relay-ai-issue-edit-input";
+            depsInput.value = Array.isArray(issue.dependencies) ? issue.dependencies.join(", ") : "";
+            depsRow.append(depsLabel, depsInput);
+
+            // Form Action Buttons
+            const formActions = document.createElement("div");
+            formActions.className = "relay-ai-issue-edit-actions";
+
+            const cancelEditBtn = document.createElement("button");
+            cancelEditBtn.type = "button";
+            cancelEditBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
+            cancelEditBtn.textContent = "Cancel";
+            cancelEditBtn.addEventListener("click", () => {
+              isEditing = false;
+              refreshCard();
+            });
+
+            const saveEditBtn = document.createElement("button");
+            saveEditBtn.type = "button";
+            saveEditBtn.className = "relay-ai-btn relay-ai-btn-primary relay-ai-btn-sm";
+            saveEditBtn.textContent = "Save Changes";
+            saveEditBtn.addEventListener("click", () => {
+              issue.title = titleInput.value.trim() || issue.title;
+              issue.issue_type = typeInput.value.trim() || issue.issue_type;
+              issue.priority = prioInput.value.trim() || issue.priority;
+              issue.body = bodyTextarea.value;
+
+              const rawLabels = labelsInput.value.split(",").map(s => s.trim()).filter(Boolean);
+              issue.labels = rawLabels;
+
+              const rawAssignees = assigneesInput.value.split(",").map(s => s.trim()).filter(Boolean);
+              issue.assignees = rawAssignees;
+              issue.assignee = rawAssignees[0] || null;
+
+              const rawDeps = depsInput.value.split(",").map(s => s.trim()).filter(Boolean);
+              issue.dependencies = rawDeps;
+
+              if (typeof saveConversation === "function") saveConversation();
+              isEditing = false;
+              refreshCard();
+            });
+
+            formActions.append(cancelEditBtn, saveEditBtn);
+            editForm.append(titleRow, gridRow, bodyRow, labelsRow, assigneesRow, depsRow, formActions);
+            card.append(editForm);
+            return;
+          }
+
+          // Normal Display View
+          const header = document.createElement("div");
+          header.className = "relay-ai-issue-header";
+
+          const title = document.createElement("h5");
+          title.className = "relay-ai-issue-title";
+          let titleText = issue.title || "Untitled Issue";
+          if (issue.id) {
+            titleText = `#${issue.id} ` + titleText;
+          }
+          title.textContent = titleText;
+
+          const meta = document.createElement("div");
+          meta.className = "relay-ai-issue-meta";
+
+          if (issue.issue_type) {
+            const typeBadge = document.createElement("span");
+            typeBadge.className = "relay-ai-issue-badge relay-ai-issue-type";
+            typeBadge.textContent = issue.issue_type;
+            meta.append(typeBadge);
+          }
+
+          if (issue.priority) {
+            const priorityBadge = document.createElement("span");
+            priorityBadge.className = "relay-ai-issue-badge relay-ai-issue-priority";
+            priorityBadge.textContent = issue.priority;
+            meta.append(priorityBadge);
+          }
+
+          header.append(title, meta);
+
+          const body = document.createElement("p");
+          body.className = "relay-ai-issue-desc";
+          body.textContent = issue.body || "";
+
+          card.append(header, body);
+
+          if ((issue.labels && issue.labels.length) || (issue.dependencies && issue.dependencies.length)) {
+            const footer = document.createElement("div");
+            footer.className = "relay-ai-issue-footer";
+
+            if (issue.labels && issue.labels.length) {
+              const labelsDiv = document.createElement("div");
+              labelsDiv.className = "relay-ai-issue-labels";
+              for (const rawLabel of issue.labels) {
+                const parts = typeof rawLabel === 'string' ? rawLabel.split(',') : [rawLabel];
+                for (const p of parts) {
+                  const clean = (typeof p === 'string' ? p.trim() : p);
+                  if (!clean) continue;
+                  const span = document.createElement("span");
+                  span.className = "relay-ai-issue-label";
+                  span.textContent = clean;
+                  labelsDiv.append(span);
+                }
+              }
+              footer.append(labelsDiv);
+            }
+
+            if (issue.dependencies && issue.dependencies.length) {
+              const depsDiv = document.createElement("div");
+              depsDiv.className = "relay-ai-issue-deps";
+              depsDiv.textContent = "Depends on: " + issue.dependencies.join(", ");
+              footer.append(depsDiv);
+            }
+
+            card.append(footer);
+          }
+
+          // =========================================================
+          // ASSIGNEE RECOMMENDATION SECTION (ADVISORY INTELLIGENCE)
+          // =========================================================
+          const assignmentSec = document.createElement("div");
+          assignmentSec.className = "relay-ai-assignment-section";
+
+          const assignHeader = document.createElement("div");
+          assignHeader.className = "relay-ai-assignment-header";
+
+          const assignTitle = document.createElement("div");
+          assignTitle.className = "relay-ai-assignment-title";
+          assignTitle.textContent = "Assignee Recommendation";
+
+          const profileBtn = document.createElement("button");
+          profileBtn.type = "button";
+          profileBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
+          profileBtn.textContent = "Edit Dev Profile";
+          profileBtn.addEventListener("click", () => {
+            openProfileModal(effectiveContext);
+          });
+
+          assignHeader.append(assignTitle, profileBtn);
+          assignmentSec.append(assignHeader);
+
+          // Warnings container
+          const warningsDiv = document.createElement("div");
+          warningsDiv.className = "relay-ai-assignment-warnings";
+          warningsDiv.hidden = true;
+          assignmentSec.append(warningsDiv);
+
+          // Candidates container
+          const candidatesDiv = document.createElement("div");
+          candidatesDiv.className = "relay-ai-assignment-candidates";
+          assignmentSec.append(candidatesDiv);
+
+          // Selected assignee badge / status
+          const currentAssigneeBox = document.createElement("div");
+          currentAssigneeBox.className = "relay-ai-candidate-actions";
+          const currentAssigneeLabel = document.createElement("span");
+          currentAssigneeLabel.style.fontSize = "11px";
+          currentAssigneeLabel.style.color = "#9cb3d8";
+          const chosen = (issue.assignees && issue.assignees[0]) || issue.assignee;
+          currentAssigneeLabel.textContent = chosen ? `Selected Assignee: @${chosen}` : "No assignee selected (advisory)";
+          currentAssigneeBox.append(currentAssigneeLabel);
+
+          // Manual assignee select dropdown
+          const manualSelect = document.createElement("select");
+          manualSelect.className = "relay-ai-assignee-manual-select";
+          const defaultOpt = document.createElement("option");
+          defaultOpt.value = "";
+          defaultOpt.textContent = "-- Select Eligible Assignee or Choose Recommended --";
+          manualSelect.append(defaultOpt);
+
+          manualSelect.addEventListener("change", () => {
+            if (manualSelect.value) {
+              issue.assignee = manualSelect.value;
+              issue.assignees = [manualSelect.value];
+            } else {
+              issue.assignee = null;
+              issue.assignees = [];
+            }
+            if (typeof saveConversation === "function") saveConversation();
+            refreshCard();
+          });
+
+          assignmentSec.append(currentAssigneeBox, manualSelect);
+
+          // Fetch recommendations if not cached or already loaded
+          const effectiveContext = (message && message.context && message.context.owner && message.context.repository)
+            ? message.context
+            : currentContext;
+
+          if (issue._recommendations) {
+            renderRecommendationsUI(issue._recommendations, issue._recommendationWarnings || []);
+          } else if (RelayAIAssistant?.getAssignmentRecommendations && effectiveContext?.owner && effectiveContext?.repository) {
+            const loadingText = document.createElement("div");
+            loadingText.className = "relay-ai-assignment-loading";
+            loadingText.textContent = "Analyzing developer fit and workload...";
+            candidatesDiv.append(loadingText);
+
+            RelayAIAssistant.getAssignmentRecommendations({
+              title: issue.title,
+              description: issue.body,
+              requiredSkills: issue.labels || [],
+              priority: issue.priority || 'Medium',
+              risk: 'Low'
+            }, effectiveContext).then(async (res) => {
+              const data = await res.json();
+              loadingText.remove();
+              if (res.ok && data?.recommendations) {
+                issue._recommendations = data.recommendations;
+                issue._recommendationWarnings = data.warnings || [];
+                renderRecommendationsUI(data.recommendations, data.warnings || []);
+              } else {
+                const warn = document.createElement("div");
+                warn.className = "relay-ai-assignment-warning";
+                warn.textContent = data?.error || "Could not load recommendations";
+                warningsDiv.hidden = false;
+                warningsDiv.append(warn);
+              }
+            }).catch(() => {
+              loadingText.remove();
+            });
+          }
+
+          function renderRecommendationsUI(recommendations, warnings) {
+            candidatesDiv.replaceChildren();
+            warningsDiv.replaceChildren();
+
+            if (warnings && warnings.length > 0) {
+              warningsDiv.hidden = false;
+              for (const w of warnings) {
+                const warn = document.createElement("div");
+                warn.className = "relay-ai-assignment-warning";
+                warn.textContent = "⚠ " + w;
+                warningsDiv.append(warn);
+              }
+            }
+
+            // Populate manualSelect options
+            while (manualSelect.children.length > 1) {
+              manualSelect.removeChild(manualSelect.lastChild);
+            }
+            for (const r of recommendations) {
+              const opt = document.createElement("option");
+              opt.value = r.githubUsername;
+              opt.textContent = `@${r.githubUsername} (${r.overallScore}% fit)`;
+              if (r.githubUsername === chosen) opt.selected = true;
+              manualSelect.append(opt);
+            }
+
+            if (!recommendations || recommendations.length === 0) {
+              const emptyText = document.createElement("div");
+              emptyText.className = "relay-ai-assignment-loading";
+              emptyText.textContent = "No eligible repository assignees or recommendations found.";
+              candidatesDiv.append(emptyText);
+              return;
+            }
+
+            recommendations.slice(0, 3).forEach((candidate) => {
+              const candCard = document.createElement("div");
+              candCard.className = "relay-ai-candidate-card";
+              if (candidate.githubUsername === chosen) {
+                candCard.classList.add("relay-ai-candidate-selected");
+              }
+
+              const topRow = document.createElement("div");
+              topRow.className = "relay-ai-candidate-top";
+
+              const userLabel = document.createElement("span");
+              userLabel.className = "relay-ai-candidate-user";
+              userLabel.textContent = `@${candidate.githubUsername}`;
+
+              const scoreBadge = document.createElement("span");
+              scoreBadge.className = "relay-ai-candidate-score-badge";
+
+              const scoreText = document.createElement("span");
+              scoreText.textContent = `${candidate.overallScore}%`;
+
+              const confSpan = document.createElement("span");
+              confSpan.className = "relay-ai-candidate-conf";
+              confSpan.textContent = ` (${candidate.confidence} conf)`;
+              scoreBadge.append(scoreText, confSpan);
+
+              topRow.append(userLabel, scoreBadge);
+
+              const rationale = document.createElement("p");
+              rationale.className = "relay-ai-candidate-rationale";
+              rationale.textContent = candidate.rationale || "";
+
+              // Missing evidence warnings for this candidate
+              const candWarnings = candidate.missingDataWarnings || [];
+              const candWarnDiv = document.createElement("div");
+              if (candWarnings.length > 0) {
+                candWarnDiv.className = "relay-ai-assignment-warnings";
+                candWarnDiv.style.marginTop = "4px";
+                for (const cw of candWarnings) {
+                  const cwElem = document.createElement("div");
+                  cwElem.className = "relay-ai-assignment-warning";
+                  cwElem.textContent = cw;
+                  candWarnDiv.append(cwElem);
+                }
+              }
+
+              // Breakdown Toggle & Container
+              const breakdownToggle = document.createElement("button");
+              breakdownToggle.type = "button";
+              breakdownToggle.className = "relay-ai-candidate-breakdown-toggle";
+              breakdownToggle.textContent = "View Criteria Breakdown ▼";
+
+              const breakdownDiv = document.createElement("div");
+              breakdownDiv.className = "relay-ai-candidate-breakdown";
+              breakdownDiv.hidden = true;
+
+              const c = candidate.criteria || {};
+              const items = [
+                { label: 'Skills (30%)', val: c.technicalSkills?.score },
+                { label: 'Workload (25%)', val: c.workloadAndEffort?.score },
+                { label: 'Familiarity (20%)', val: c.repositoryFamiliarity?.score },
+                { label: 'Availability (15%)', val: c.availabilityAndDeadlines?.score },
+                { label: 'Growth/Fairness (10%)', val: c.growthAndFairness?.score }
+              ];
+              for (const it of items) {
+                const bItem = document.createElement("div");
+                bItem.className = "relay-ai-breakdown-item";
+                bItem.textContent = `${it.label}: `;
+                const bStrong = document.createElement("strong");
+                bStrong.textContent = `${it.val != null ? it.val : '-'}%`;
+                bItem.append(bStrong);
+                breakdownDiv.append(bItem);
+              }
+
+              breakdownToggle.addEventListener("click", (e) => {
+                e.stopPropagation();
+                breakdownDiv.hidden = !breakdownDiv.hidden;
+                breakdownToggle.textContent = breakdownDiv.hidden ? "View Criteria Breakdown ▼" : "Hide Criteria Breakdown ▲";
+              });
+
+              // Click to select this recommended assignee (Advisory Confirmation)
+              candCard.addEventListener("click", () => {
+                if (issue.assignee === candidate.githubUsername) {
+                  // Deselect
+                  issue.assignee = null;
+                  issue.assignees = [];
+                } else {
+                  // Select
+                  issue.assignee = candidate.githubUsername;
+                  issue.assignees = [candidate.githubUsername];
+                }
+                if (typeof saveConversation === "function") saveConversation();
+                refreshCard();
+              });
+
+              candCard.append(topRow, rationale);
+              if (candWarnings.length > 0) candCard.append(candWarnDiv);
+              candCard.append(breakdownToggle, breakdownDiv);
+              candidatesDiv.append(candCard);
+            });
+          }
+
+          card.append(assignmentSec);
+
+          // Individual Card Action Bar
+          const cardActions = document.createElement("div");
+          cardActions.className = "relay-ai-issue-card-actions";
+
+          const cardStatus = document.createElement("span");
+          cardStatus.className = "relay-ai-issue-card-status";
+          cardActions.append(cardStatus);
+
+          if (isConfirmingCancel) {
+            const confirmBox = document.createElement("div");
+            confirmBox.className = "relay-ai-issue-cancel-confirm";
+
+            const confirmMsg = document.createElement("span");
+            confirmMsg.textContent = "Cancel this issue?";
+
+            const confirmYesBtn = document.createElement("button");
+            confirmYesBtn.type = "button";
+            confirmYesBtn.className = "relay-ai-btn relay-ai-btn-danger-outline relay-ai-btn-sm";
+            confirmYesBtn.textContent = "Yes, Remove";
+            confirmYesBtn.addEventListener("click", () => {
+              const idx = message.issuePlan.issues.indexOf(issue);
+              if (idx !== -1) {
+                message.issuePlan.issues.splice(idx, 1);
+              }
+              card.remove();
+              if (typeof saveConversation === "function") saveConversation();
+              updateBulkControls();
+              if (message.issuePlan.issues.length === 0) {
+                planContainer.remove();
+              }
+            });
+
+            const confirmNoBtn = document.createElement("button");
+            confirmNoBtn.type = "button";
+            confirmNoBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
+            confirmNoBtn.textContent = "Keep";
+            confirmNoBtn.addEventListener("click", () => {
+              isConfirmingCancel = false;
+              refreshCard();
+            });
+
+            confirmBox.append(confirmMsg, confirmYesBtn, confirmNoBtn);
+            cardActions.append(confirmBox);
+          } else {
+            const editBtn = document.createElement("button");
+            editBtn.type = "button";
+            editBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
+            editBtn.textContent = "Edit";
+            editBtn.addEventListener("click", () => {
+              isEditing = true;
+              refreshCard();
+            });
+
+            const cancelBtn = document.createElement("button");
+            cancelBtn.type = "button";
+            cancelBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
+            cancelBtn.textContent = "Cancel";
+            cancelBtn.addEventListener("click", () => {
+              isConfirmingCancel = true;
+              refreshCard();
+            });
+
+            const createBtn = document.createElement("button");
+            createBtn.type = "button";
+            createBtn.className = "relay-ai-btn relay-ai-btn-primary relay-ai-btn-sm";
+            createBtn.textContent = "Create";
+
+            createBtn.addEventListener("click", async () => {
+              if (issue._creating || issue._created) return;
+              issue._creating = true;
+
+              createBtn.disabled = true;
+              editBtn.disabled = true;
+              cancelBtn.disabled = true;
+              cardStatus.className = "relay-ai-issue-card-status";
+              cardStatus.textContent = "Creating...";
+
+              try {
+                const singlePlan = {
+                  issues: [{
+                    id: issue.id,
+                    issue_type: issue.issue_type,
+                    title: issue.title,
+                    body: issue.body,
+                    labels: issue.labels,
+                    priority: issue.priority,
+                    dependencies: issue.dependencies,
+                    assignees: Array.isArray(issue.assignees) ? issue.assignees : (issue.assignee ? [issue.assignee] : [])
+                  }]
+                };
+
+                const effectiveContext = (message && message.context && message.context.owner && message.context.repository)
+                  ? message.context
+                  : currentContext;
+
+                if (!effectiveContext || !effectiveContext.owner || !effectiveContext.repository) {
+                  throw new Error("No repository selected. Please open or select a repository first.");
+                }
+
+                const res = await RelayAIAssistant.createIssue(singlePlan, effectiveContext);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || "Server error " + res.status);
+
+                const result = data.results && data.results[0];
+                if (result && result.status === 'success') {
+                  issue._created = true;
+                  issue._creating = false;
+                  issue._createdNumber = result.number;
+                  issue._createdUrl = result.url;
+                  if (typeof saveConversation === "function") saveConversation();
+                  updateBulkControls();
+                  refreshCard();
+                } else {
+                  throw new Error(result?.error || "Creation failed");
+                }
+              } catch (err) {
+                issue._creating = false;
+                createBtn.disabled = false;
+                editBtn.disabled = false;
+                cancelBtn.disabled = false;
+                cardStatus.className = "relay-ai-issue-card-status relay-ai-issue-card-status-error";
+                cardStatus.textContent = err.message || "Error";
+              }
+            });
+
+            cardActions.append(editBtn, cancelBtn, createBtn);
+          }
+
+          card.append(cardActions);
+        }
+
+        refreshCard();
+        return card;
+      }
+
+      // Modal helper for editing developer profile
+      function openProfileModal(context) {
+        const overlay = document.createElement("div");
+        overlay.className = "relay-ai-profile-modal-overlay";
+
+        const modal = document.createElement("div");
+        modal.className = "relay-ai-profile-modal";
+
+        const mTitle = document.createElement("h4");
+        mTitle.textContent = "Developer Profile Settings";
+
+        const form = document.createElement("div");
+        form.className = "relay-ai-issue-edit-form";
+
+        // Skills row
+        const sRow = document.createElement("div");
+        sRow.className = "relay-ai-issue-edit-label-row";
+        const sLabel = document.createElement("span");
+        sLabel.className = "relay-ai-issue-edit-label-text";
+        sLabel.textContent = "Declared Skills (comma-separated)";
+        const skillsIn = document.createElement("input");
+        skillsIn.type = "text";
+        skillsIn.className = "relay-ai-issue-edit-input";
+        skillsIn.placeholder = "e.g. react, node.js, postgresql";
+        sRow.append(sLabel, skillsIn);
+
+        // Capacity and tasks grid
+        const grid = document.createElement("div");
+        grid.className = "relay-ai-issue-edit-grid";
+
+        const capRow = document.createElement("div");
+        capRow.className = "relay-ai-issue-edit-label-row";
+        const capLabel = document.createElement("span");
+        capLabel.className = "relay-ai-issue-edit-label-text";
+        capLabel.textContent = "Weekly Capacity (hours)";
+        const capIn = document.createElement("input");
+        capIn.type = "number";
+        capIn.className = "relay-ai-issue-edit-input";
+        capIn.value = "40";
+        capRow.append(capLabel, capIn);
+
+        const tasksRow = document.createElement("div");
+        tasksRow.className = "relay-ai-issue-edit-label-row";
+        const tasksLabel = document.createElement("span");
+        tasksLabel.className = "relay-ai-issue-edit-label-text";
+        tasksLabel.textContent = "Max Concurrent Tasks";
+        const maxTasksIn = document.createElement("input");
+        maxTasksIn.type = "number";
+        maxTasksIn.className = "relay-ai-issue-edit-input";
+        maxTasksIn.value = "3";
+        tasksRow.append(tasksLabel, maxTasksIn);
+
+        grid.append(capRow, tasksRow);
+
+        // Availability row
+        const availRow = document.createElement("div");
+        availRow.className = "relay-ai-issue-edit-label-row";
+        const availLabel = document.createElement("span");
+        availLabel.className = "relay-ai-issue-edit-label-text";
+        availLabel.textContent = "Availability";
+        const availIn = document.createElement("select");
+        availIn.className = "relay-ai-issue-edit-input";
+        const optAvail = document.createElement("option");
+        optAvail.value = "true";
+        optAvail.textContent = "Available for Tasks";
+        const optUnavail = document.createElement("option");
+        optUnavail.value = "false";
+        optUnavail.textContent = "Unavailable / Away";
+        availIn.append(optAvail, optUnavail);
+        availRow.append(availLabel, availIn);
+
+        // Focus row
+        const fRow = document.createElement("div");
+        fRow.className = "relay-ai-issue-edit-label-row";
+        const fLabel = document.createElement("span");
+        fLabel.className = "relay-ai-issue-edit-label-text";
+        fLabel.textContent = "Current Focus";
+        const focusIn = document.createElement("input");
+        focusIn.type = "text";
+        focusIn.className = "relay-ai-issue-edit-input";
+        focusIn.placeholder = "e.g. Backend API";
+        fRow.append(fLabel, focusIn);
+
+        // Status
+        const statusSpan = document.createElement("div");
+        statusSpan.className = "relay-ai-issue-card-status";
+        statusSpan.style.marginTop = "4px";
+
+        // Action buttons
+        const modalActions = document.createElement("div");
+        modalActions.className = "relay-ai-issue-edit-actions";
+
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
+        cancelBtn.textContent = "Cancel";
+
+        const saveBtn = document.createElement("button");
+        saveBtn.type = "button";
+        saveBtn.className = "relay-ai-btn relay-ai-btn-primary relay-ai-btn-sm";
+        saveBtn.textContent = "Save Profile";
+
+        modalActions.append(cancelBtn, saveBtn);
+        form.append(sRow, grid, availRow, fRow, statusSpan, modalActions);
+        modal.append(mTitle, form);
+
+        overlay.append(modal);
+        document.body.append(overlay);
+
+        cancelBtn.addEventListener("click", () => overlay.remove());
+
+        // Preload current profile
+        if (RelayAIAssistant?.getDeveloperProfile && context?.owner && context?.repository) {
+          statusSpan.textContent = "Loading current profile...";
+          RelayAIAssistant.getDeveloperProfile(context).then(async (res) => {
+            const data = await res.json();
+            statusSpan.textContent = "";
+            if (data?.profile) {
+              const p = data.profile;
+              if (Array.isArray(p.declared_skills)) skillsIn.value = p.declared_skills.join(", ");
+              if (p.weekly_capacity_hours != null) capIn.value = p.weekly_capacity_hours;
+              if (p.max_concurrent_tasks != null) maxTasksIn.value = p.max_concurrent_tasks;
+              availIn.value = p.is_available ? "true" : "false";
+              if (p.current_focus) focusIn.value = p.current_focus;
+            }
+          }).catch(() => {
+            statusSpan.textContent = "";
+          });
+        }
+
+        saveBtn.addEventListener("click", async () => {
+          saveBtn.disabled = true;
+          statusSpan.className = "relay-ai-issue-card-status";
+          statusSpan.textContent = "Saving...";
+
+          const declaredSkills = skillsIn.value.split(",").map(s => s.trim()).filter(Boolean);
+          const weeklyCapacityHours = parseInt(capIn.value, 10) || 40;
+          const maxConcurrentTasks = parseInt(maxTasksIn.value, 10) || 3;
+          const isAvailable = availIn.value === "true";
+          const currentFocus = focusIn.value.trim() || null;
+
+          try {
+            const res = await RelayAIAssistant.upsertDeveloperProfile({
+              declaredSkills,
+              weeklyCapacityHours,
+              maxConcurrentTasks,
+              isAvailable,
+              currentFocus
+            }, context);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || "Save failed");
+
+            statusSpan.className = "relay-ai-issue-card-status relay-ai-issue-card-status-success";
+            statusSpan.textContent = "Profile saved successfully!";
+            setTimeout(() => {
+              overlay.remove();
+            }, 800);
+          } catch (err) {
+            saveBtn.disabled = false;
+            statusSpan.className = "relay-ai-issue-card-status relay-ai-issue-card-status-error";
+            statusSpan.textContent = err.message || "Failed to save profile";
+          }
+        });
+      }
+
+      // Render cards
+      message.issuePlan.issues.forEach((issue, idx) => {
+        cardsContainer.append(renderIssueCard(issue, idx));
+      });
+
+      bulkCreateBtn.addEventListener("click", async () => {
+        const pendingIssues = (message.issuePlan.issues || []).filter(issue => !issue._created && !issue._creating);
+        if (pendingIssues.length === 0) return;
+
+        bulkInfoMsg.hidden = false;
+        bulkInfoMsg.textContent = "Creating issues...";
+        bulkInfoMsg.className = "relay-ai-issue-info";
+        bulkCreateBtn.disabled = true;
+        bulkCancelBtn.disabled = true;
 
         try {
-          const res = await RelayAIAssistant.createIssue(message.issuePlan, currentContext);
-          
+          const bulkPlan = {
+            issues: pendingIssues.map(issue => ({
+              id: issue.id,
+              issue_type: issue.issue_type,
+              title: issue.title,
+              body: issue.body,
+              labels: issue.labels,
+              priority: issue.priority,
+              dependencies: issue.dependencies,
+              assignees: Array.isArray(issue.assignees) ? issue.assignees : (issue.assignee ? [issue.assignee] : [])
+            }))
+          };
+          const effectiveContext = (message && message.context && message.context.owner && message.context.repository)
+            ? message.context
+            : currentContext;
+
+          if (!effectiveContext || !effectiveContext.owner || !effectiveContext.repository) {
+            throw new Error("No repository selected. Please open or select a repository first.");
+          }
+
+          const res = await RelayAIAssistant.createIssue(bulkPlan, effectiveContext);
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || "Server error " + res.status);
-          
-          planContainer.replaceChildren();
+
           for (const result of data.results || []) {
-            const card = document.createElement("div");
-            card.className = "relay-ai-issue-card";
-            
-            if (result.status === 'success') {
-              const title = document.createElement("a");
-              title.className = "relay-ai-issue-title";
-              title.href = result.url;
-              title.target = "_blank";
-              title.textContent = "✅ #" + result.number + " " + result.title;
-              card.append(title);
-            } else {
-              const title = document.createElement("h4");
-              title.className = "relay-ai-issue-title";
-              title.textContent = "❌ " + result.title;
-              
-              const errNode = document.createElement("p");
-              errNode.style.color = "var(--relay-ai-danger)";
-              errNode.style.marginTop = "8px";
-              errNode.textContent = result.error;
-              card.append(title, errNode);
+            const matched = pendingIssues.find(i => i.title === result.title);
+            if (matched) {
+              if (result.status === 'success') {
+                matched._created = true;
+                matched._createdNumber = result.number;
+                matched._createdUrl = result.url;
+              }
             }
-            planContainer.append(card);
           }
+
+          if (typeof saveConversation === "function") saveConversation();
+
+          cardsContainer.replaceChildren();
+          for (const issue of message.issuePlan.issues) {
+            cardsContainer.append(renderIssueCard(issue, message.issuePlan.issues.indexOf(issue)));
+          }
+
+          bulkInfoMsg.hidden = true;
+          updateBulkControls();
         } catch (err) {
-          infoMsg.textContent = "Failed to create issues: " + err.message;
-          infoMsg.style.color = "var(--relay-ai-danger)";
-          createBtn.disabled = false;
-          cancelBtn.disabled = false;
+          bulkInfoMsg.textContent = "Failed to create issues: " + err.message;
+          bulkInfoMsg.style.color = "var(--relay-ai-danger)";
+          bulkCreateBtn.disabled = false;
+          bulkCancelBtn.disabled = false;
         }
       });
-      
-      cancelBtn.addEventListener("click", () => {
+
+      bulkCancelBtn.addEventListener("click", () => {
         planContainer.remove();
       });
 
-      actions.append(cancelBtn, createBtn);
-      planContainer.append(actions, infoMsg);
+      bulkActions.append(bulkCancelBtn, bulkCreateBtn);
+      planContainer.append(bulkActions, bulkInfoMsg);
+      updateBulkControls();
 
       article.append(planContainer);
     }
@@ -1083,8 +1826,15 @@
     list.append(loadingState);
 
     RelayAIAssistant.getRepositories()
-    .then(r => {
-      if (!r.ok) throw new Error('API error: ' + r.status);
+    .then(async r => {
+      if (!r.ok) {
+        let msg = "Unable to load repositories";
+        try {
+          const errData = await r.json();
+          if (errData && errData.error) msg = errData.error;
+        } catch { /* use default message */ }
+        throw new Error(msg);
+      }
       return r.json();
     })
     .then(data => {
@@ -1113,11 +1863,11 @@
       // Re-trigger filter just in case the user typed while loading
       search.dispatchEvent(new Event('input'));
     })
-    .catch(() => {
+    .catch((err) => {
       loadingState.remove();
       const errorState = document.createElement("div");
       errorState.className = "relay-ai-repository-error";
-      errorState.textContent = "Unable to load repositories";
+      errorState.textContent = (err && err.message) ? err.message : "Unable to load repositories";
       
       const retry = document.createElement("button");
       retry.textContent = "Retry";
@@ -1234,7 +1984,7 @@
       "relay-ai-repository-hint";
 
     hint.textContent =
-      "You can paste a GitHub repository URL, for example github.com/SHAM-MAX/GitHub-Kanban-Practice";
+      "You can paste a GitHub repository URL, for example github.com/your-username/your-repository";
 
 
     /* -------------------------------------------------------
@@ -1694,15 +2444,95 @@
      CONNECT RELAY
      ========================================================= */
 
-  if (
-    ui.connect &&
-    globalThis.chrome?.runtime?.id
-  ) {
+  function setAuthState(isAuthenticated) {
+    if (ui["auth-unauthenticated"] && ui["auth-authenticated"]) {
+      ui["auth-unauthenticated"].hidden = isAuthenticated;
+      ui["auth-authenticated"].hidden = !isAuthenticated;
+    }
+  }
 
-    ui.connect.href =
-      RelayAIAssistant.connectionURL(
-        chrome.runtime.id
-      );
+  // Restore cached auth state immediately to avoid UI flicker on panel reopen
+  if (globalThis.chrome?.storage?.local) {
+    chrome.storage.local.get(["relay_auth_connected"], (res) => {
+      if (res?.relay_auth_connected) {
+        setAuthState(true);
+      }
+    });
+  }
+
+  if (ui.connect) {
+    ui.connect.addEventListener('click', async (e) => {
+      e.preventDefault();
+      if (ui["auth-authenticated"] && !ui["auth-authenticated"].hidden) {
+        return;
+      }
+      if (globalThis.chrome?.storage?.local) {
+        const cached = await new Promise(r => chrome.storage.local.get(["relay_auth_connected"], r));
+        if (cached?.relay_auth_connected) {
+          setAuthState(true);
+          return;
+        }
+      }
+      if (typeof RelayAIAssistant?.checkAuth === 'function') {
+        try {
+          const isAuthed = await RelayAIAssistant.checkAuth();
+          if (isAuthed) {
+            setAuthState(true);
+            if (globalThis.chrome?.storage?.local) {
+              chrome.storage.local.set({ relay_auth_connected: true });
+            }
+            return;
+          }
+        } catch {
+          // If checkAuth fails with temporary network issue, proceed to login attempt
+        }
+      }
+      try {
+        const result = await RelayAIAssistant.login();
+        appendMessage({ role: 'system', content: 'Successfully signed in as ' + result.username + '. Relay is connected.' });
+        setAuthState(true);
+        if (globalThis.chrome?.storage?.local) {
+          chrome.storage.local.set({ relay_auth_connected: true });
+        }
+      } catch (err) {
+        appendMessage({ role: 'error', content: err.message });
+      }
+    });
+  }
+
+  if (ui.logout) {
+    ui.logout.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try {
+        await RelayAIAssistant.logout();
+        setAuthState(false);
+        if (globalThis.chrome?.storage?.local) {
+          chrome.storage.local.remove("relay_auth_connected");
+        }
+      } catch (err) {
+        appendMessage({ role: 'error', content: err.message });
+      }
+    });
+  }
+
+  // Validate actual backend session or valid session cookie
+  if (typeof RelayAIAssistant?.checkAuth === 'function') {
+    RelayAIAssistant.checkAuth().then(isAuthenticated => {
+      if (isAuthenticated === true) {
+        setAuthState(true);
+        if (globalThis.chrome?.storage?.local) {
+          chrome.storage.local.set({ relay_auth_connected: true });
+        }
+      } else if (isAuthenticated === false) {
+        // Only clear state if explicitly reported as unauthenticated (e.g. 401 Unauthorized)
+        setAuthState(false);
+        if (globalThis.chrome?.storage?.local) {
+          chrome.storage.local.remove("relay_auth_connected");
+        }
+      }
+    }).catch(() => {
+      // Do not treat temporary network check failures or API errors as Logout
+    });
   }
 
 

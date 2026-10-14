@@ -47,7 +47,7 @@ test('DOM branch hints tolerate malformed/partial GitHub data', () => {
 test('MV3 package permits only GitHub injection and the Relay backend connection', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json')));
   assert.equal(manifest.manifest_version, 3); assert.equal(manifest.minimum_chrome_version, '116');
-  assert.deepEqual(manifest.permissions, ['storage']);
+  assert.deepEqual(manifest.permissions, ['storage', 'identity', 'cookies']);
   assert.deepEqual(manifest.host_permissions, ['https://github.com/*', 'https://relay-standalone-backend.onrender.com/*']);
   assert.match(manifest.content_security_policy.extension_pages, /connect-src https:\/\/relay-standalone-backend.onrender.com;/);
   assert.deepEqual(manifest.content_scripts[0].matches, ['https://github.com/*']);
@@ -99,12 +99,26 @@ test('worker does not leak raw Chrome errors to the page', async () => {
   await settle(); assert.equal(response.ok, false); assert.doesNotMatch(response.error, /sensitive/);
 });
 
-async function panel() {
-  const env = environment({ panel: true });
+async function panel(opts = {}) {
+  const env = environment({ panel: true, storageData: opts.storageData });
   env.calls = [];
   env.scope.RelayAIAssistant = {
     ENDPOINT: 'https://relay-standalone-backend.onrender.com/assistant',
     connectionURL: id => 'https://relay-standalone-backend.onrender.com/extension-connect?extension_id=' + id,
+    login: opts.login || (async () => ({ username: 'octocat' })),
+    logout: opts.logout || (async () => ({ ok: true })),
+    checkAuth: opts.checkAuth || (async () => false),
+    createIssue: opts.createIssue || (async (issuePlan) => ({
+      ok: true,
+      json: async () => ({
+        results: (issuePlan.issues || []).map((issue, idx) => ({
+          title: issue.title,
+          number: idx + 101,
+          url: `https://github.com/SHAM-MAX/new-kanban-board/issues/${idx + 101}`,
+          status: 'success'
+        }))
+      })
+    })),
     send: (message, context) => {
       env.calls.push({ message, context });
       return new Promise((resolve, reject) => { env.resolveAI = resolve; env.rejectAI = reject; });
@@ -350,4 +364,678 @@ test('assistant response does not render internal debug or model metadata', asyn
   assert.doesNotMatch(text, /Model:/);
   assert.doesNotMatch(text, /Groq/);
   assert.doesNotMatch(text, /GPT-OSS/);
+});
+
+test('connect relay click invokes login, displays system notification, and toggles auth state', async () => {
+  const env = await panel();
+  let loginCalled = false;
+  env.scope.RelayAIAssistant.login = async () => {
+    loginCalled = true;
+    return { username: 'octocat' };
+  };
+
+  const connectBtn = env.get('connect');
+  assert.ok(connectBtn);
+  await connectBtn.click();
+  await settle();
+
+  assert.equal(loginCalled, true);
+  assert.equal(env.get('auth-unauthenticated').hidden, true);
+  assert.equal(env.get('auth-authenticated').hidden, false);
+
+  const messages = walk(env.get('messages')).map(el => el.textContent).join(' ');
+  assert.match(messages, /Successfully signed in as octocat/);
+});
+
+test('floating button and extension UI are hidden on login and OAuth pages, but visible on repository pages', async () => {
+  const authUrls = [
+    'https://github.com/login',
+    'https://github.com/login/oauth/authorize?client_id=test-id&redirect_uri=https%3A%2F%2Ftest.chromiumapp.org%2F',
+    'https://github.com/login/oauth/callback',
+    'https://github.com/oauth/authorize',
+    'https://github.com/session',
+    'https://github.com/sessions'
+  ];
+
+  // 1. Initial load on auth/oauth pages suppresses floating launcher and panel
+  for (const url of authUrls) {
+    const authEnv = environment({ url });
+    authEnv.run('context.js');
+    authEnv.run('content.js');
+    assert.equal(walk(authEnv.document).filter(el => el.id === 'relay-ai-launcher').length, 0, `Launcher should not exist on ${url}`);
+    assert.equal(walk(authEnv.document).filter(el => el.id === 'relay-ai-floating-panel').length, 0, `Panel should not exist on ${url}`);
+  }
+
+  // 2. Normal repository page shows floating launcher
+  const repoEnv = environment({ url: base });
+  repoEnv.run('context.js');
+  repoEnv.run('content.js');
+  assert.equal(walk(repoEnv.document).filter(el => el.id === 'relay-ai-launcher').length, 1);
+
+  // 3. Navigation from repository page to OAuth authorization page removes launcher
+  repoEnv.location.href = 'https://github.com/login/oauth/authorize?client_id=test-id';
+  repoEnv.intervals[0]();
+  await repoEnv.tick(120);
+  assert.equal(walk(repoEnv.document).filter(el => el.id === 'relay-ai-launcher').length, 0);
+
+  // 4. Navigation back to repository page restores launcher
+  repoEnv.location.href = base + '/issues/15';
+  repoEnv.intervals[0]();
+  await repoEnv.tick(120);
+  assert.equal(walk(repoEnv.document).filter(el => el.id === 'relay-ai-launcher').length, 1);
+});
+
+test('closing and reopening the panel preserves the connected state', async () => {
+  const sharedStorage = {};
+  // 1. Initial panel session connects
+  const panel1 = await panel({ storageData: sharedStorage });
+  assert.equal(panel1.get('auth-authenticated').hidden, true);
+  await panel1.get('connect').click();
+  await settle();
+  assert.equal(panel1.get('auth-authenticated').hidden, false);
+  assert.equal(sharedStorage.relay_auth_connected, true);
+
+  // 2. Reopening panel (new instance with same storage & active session) preserves connected state
+  const panel2 = await panel({ storageData: sharedStorage, checkAuth: async () => true });
+  assert.equal(panel2.get('auth-authenticated').hidden, false);
+  assert.equal(panel2.get('auth-unauthenticated').hidden, true);
+});
+
+test('reopening panel checks backend session and restores connected UI automatically', async () => {
+  let checkAuthCalled = false;
+  const env = await panel({
+    checkAuth: async () => {
+      checkAuthCalled = true;
+      return true;
+    }
+  });
+  await settle();
+  assert.equal(checkAuthCalled, true);
+  assert.equal(env.get('auth-authenticated').hidden, false);
+  assert.equal(env.get('auth-unauthenticated').hidden, true);
+});
+
+test('does not launch OAuth again when user is already authenticated', async () => {
+  let loginCount = 0;
+  const env = await panel({
+    storageData: { relay_auth_connected: true },
+    checkAuth: async () => true,
+    login: async () => {
+      loginCount++;
+      return { username: 'octocat' };
+    }
+  });
+  await settle();
+  assert.equal(env.get('auth-authenticated').hidden, false);
+
+  // Attempt to trigger connect while authenticated
+  await env.get('connect').click();
+  await settle();
+  assert.equal(loginCount, 0, 'OAuth login must not be launched when already authenticated');
+});
+
+test('explicit logout clears session and returns UI to disconnected state, and clicking connect after logout restarts OAuth', async () => {
+  const sharedStorage = { relay_auth_connected: true };
+  let logoutCalled = false;
+  let loginCount = 0;
+
+  const env = await panel({
+    storageData: sharedStorage,
+    checkAuth: async () => true,
+    logout: async () => {
+      logoutCalled = true;
+      return { ok: true };
+    },
+    login: async () => {
+      loginCount++;
+      return { username: 'octocat' };
+    }
+  });
+  await settle();
+  assert.equal(env.get('auth-authenticated').hidden, false);
+
+  // Explicit logout
+  const logoutBtn = env.get('logout');
+  assert.ok(logoutBtn);
+  await logoutBtn.click();
+  await settle();
+
+  assert.equal(logoutCalled, true);
+  assert.equal(env.get('auth-authenticated').hidden, true);
+  assert.equal(env.get('auth-unauthenticated').hidden, false);
+  assert.equal(sharedStorage.relay_auth_connected, undefined);
+
+  // Clicking connect after logout restarts OAuth
+  // checkAuth now returns false since user logged out
+  env.scope.RelayAIAssistant.checkAuth = async () => false;
+  await env.get('connect').click();
+  await settle();
+
+  assert.equal(loginCount, 1, 'OAuth login should restart after logout');
+  assert.equal(env.get('auth-authenticated').hidden, false);
+  assert.equal(sharedStorage.relay_auth_connected, true);
+});
+
+test('temporary network failure during checkAuth does not log out user', async () => {
+  const sharedStorage = { relay_auth_connected: true };
+  const env = await panel({
+    storageData: sharedStorage,
+    checkAuth: async () => {
+      throw new TypeError('Failed to fetch');
+    }
+  });
+  await settle();
+
+  // Connected state must be preserved
+  assert.equal(env.get('auth-authenticated').hidden, false);
+  assert.equal(env.get('auth-unauthenticated').hidden, true);
+  assert.equal(sharedStorage.relay_auth_connected, true);
+});
+
+test('repository-fetch 403 response does not trigger automatic logout', async () => {
+  const sharedStorage = { relay_auth_connected: true };
+  const env = await panel({
+    storageData: sharedStorage,
+    checkAuth: async () => true
+  });
+  await settle();
+  assert.equal(env.get('auth-authenticated').hidden, false);
+
+  // Trigger repository fetch with 403 error
+  env.scope.RelayAIAssistant.getRepositories = async () => ({
+    ok: false,
+    status: 403,
+    json: async () => ({ error: 'Use Connect Relay in the panel to approve this extension.', code: 'EXTENSION_NOT_CONNECTED' })
+  });
+
+  // Open repository picker via refresh button
+  await env.get('refresh').click();
+  await settle();
+
+  // Verify repository picker shows clean error and retry button
+  const errorEl = walk(env.document).find(el => el.className && el.className.includes('relay-ai-repository-error'));
+  assert.ok(errorEl);
+  assert.match(errorEl.textContent, /Use Connect Relay in the panel to approve this extension/);
+
+  // CRITICAL: Panel auth state must STILL be Connected
+  assert.equal(env.get('auth-authenticated').hidden, false);
+  assert.equal(env.get('auth-unauthenticated').hidden, true);
+  assert.equal(sharedStorage.relay_auth_connected, true);
+});
+
+test('repeated panel close/reopen preserves connected authentication state', async () => {
+  const persistentStorage = {};
+
+  // First session: user signs in
+  const session1 = await panel({ storageData: persistentStorage });
+  await session1.get('connect').click();
+  await settle();
+  assert.equal(session1.get('auth-authenticated').hidden, false);
+  assert.equal(persistentStorage.relay_auth_connected, true);
+
+  // Reopen 1
+  const session2 = await panel({ storageData: persistentStorage, checkAuth: async () => true });
+  assert.equal(session2.get('auth-authenticated').hidden, false);
+  assert.equal(session2.get('auth-unauthenticated').hidden, true);
+
+  // Reopen 2
+  const session3 = await panel({ storageData: persistentStorage, checkAuth: async () => true });
+  assert.equal(session3.get('auth-authenticated').hidden, false);
+  assert.equal(session3.get('auth-unauthenticated').hidden, true);
+
+  // Reopen 3 with repository fetch failure
+  const session4 = await panel({ storageData: persistentStorage, checkAuth: async () => true });
+  assert.equal(session4.get('auth-authenticated').hidden, false);
+  assert.equal(session4.get('auth-unauthenticated').hidden, true);
+  assert.equal(persistentStorage.relay_auth_connected, true);
+});
+
+test('proposed issue cards support editing ticket fields and saving to state', async () => {
+  const env = await panel();
+  env.get('input').value = 'Create issues';
+  const sending = env.get('form').emit('submit');
+  await settle();
+
+  const issuePlan = {
+    issues: [
+      { id: '1', title: 'Issue One', issue_type: 'task', priority: 'High', body: 'Original description', labels: ['ui'] },
+      { id: '2', title: 'Issue Two', issue_type: 'bug', priority: 'Low', body: 'Second description', labels: ['backend'] }
+    ]
+  };
+
+  env.resolveAI({ reply: 'Here are the issues.', issuePlan });
+  await sending;
+
+  const cards = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-issue-card'));
+  assert.equal(cards.length, 2);
+
+  // Click edit button on the first card
+  const card1Actions = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-issue-card-actions'));
+  const editBtn = walk(card1Actions).find(el => el.textContent === 'Edit');
+  assert.ok(editBtn);
+  await editBtn.click();
+  await settle();
+
+  // Find edit form inputs inside card 1
+  const editForm = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-issue-edit-form'));
+  assert.ok(editForm);
+
+  const inputs = walk(editForm).filter(el => el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+  const titleInput = inputs.find(el => el.value === 'Issue One');
+  const bodyInput = inputs.find(el => el.value === 'Original description');
+  assert.ok(titleInput);
+  assert.ok(bodyInput);
+
+  titleInput.value = 'Updated Issue One Title';
+  bodyInput.value = 'Updated acceptance criteria';
+
+  // Save changes
+  const saveBtn = walk(editForm).find(el => el.textContent === 'Save Changes');
+  await saveBtn.click();
+  await settle();
+
+  // Verify updated state and rendering
+  assert.match(walk(cards[0]).map(el => el.textContent).join(' '), /Updated Issue One Title/);
+  assert.match(walk(cards[0]).map(el => el.textContent).join(' '), /Updated acceptance criteria/);
+  assert.equal(issuePlan.issues[0].title, 'Updated Issue One Title');
+  assert.equal(issuePlan.issues[0].body, 'Updated acceptance criteria');
+
+  // Verify card 2 was unaffected
+  assert.equal(issuePlan.issues[1].title, 'Issue Two');
+  assert.match(walk(cards[1]).map(el => el.textContent).join(' '), /Issue Two/);
+});
+
+test('individual issue creation creates only target issue and prevents duplicate submission', async () => {
+  let createdPlans = [];
+  let contextsReceived = [];
+  const env = await panel({
+    createIssue: async (plan, ctx) => {
+      createdPlans.push(plan);
+      contextsReceived.push(ctx);
+      return {
+        ok: true,
+        json: async () => ({
+          results: plan.issues.map(i => ({
+            title: i.title,
+            number: 42,
+            url: `https://github.com/SHAM-MAX/new-kanban-board/issues/42`,
+            status: 'success'
+          }))
+        })
+      };
+    }
+  });
+
+  env.get('input').value = 'Propose plan';
+  const sending = env.get('form').emit('submit');
+  await settle();
+
+  const issuePlan = {
+    issues: [
+      { id: '1', title: 'First Task', issue_type: 'task', priority: 'Medium', body: 'Do task 1' },
+      { id: '2', title: 'Second Task', issue_type: 'task', priority: 'Low', body: 'Do task 2' }
+    ]
+  };
+
+  env.resolveAI({ reply: 'Proposed plan', issuePlan });
+  await sending;
+
+  const cards = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-issue-card'));
+  assert.equal(cards.length, 2);
+
+  // Click individual Create on Card 1
+  const card1Actions = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-issue-card-actions'));
+  const card1CreateBtn = walk(card1Actions).find(el => el.textContent === 'Create');
+  assert.ok(card1CreateBtn);
+
+  await card1CreateBtn.click();
+  await settle();
+
+  // Verify only First Task was sent to backend
+  assert.equal(createdPlans.length, 1);
+  assert.equal(createdPlans[0].issues.length, 1);
+  assert.equal(createdPlans[0].issues[0].title, 'First Task');
+  assert.equal(contextsReceived.length, 1);
+  assert.equal(contextsReceived[0].owner, 'SHAM-MAX');
+  assert.equal(contextsReceived[0].repository, 'new-kanban-board');
+
+  // Verify card 1 transitioned to created state
+  assert.match(walk(cards[0]).map(el => el.textContent).join(' '), /Created in GitHub/);
+  assert.match(walk(cards[0]).map(el => el.textContent).join(' '), /#42 First Task/);
+
+  // Verify card 2 is still uncreated and has Create button
+  const card2Actions = walk(cards[1]).find(el => el.classList && el.classList.contains('relay-ai-issue-card-actions'));
+  const card2CreateBtn = walk(card2Actions).find(el => el.textContent === 'Create');
+  assert.ok(card2CreateBtn);
+  assert.equal(issuePlan.issues[1]._created, undefined);
+
+  // Verify bulk button now displays "Create 1 Issue"
+  const bulkCreateBtn = walk(env.get('messages')).find(el => el.textContent && el.textContent.startsWith('Create 1 Issue'));
+  assert.ok(bulkCreateBtn);
+
+  // Clicking bulk create now only creates remaining uncreated issues (First Task is skipped)
+  await bulkCreateBtn.click();
+  await settle();
+
+  assert.equal(createdPlans.length, 2);
+  assert.equal(createdPlans[1].issues.length, 1);
+  assert.equal(createdPlans[1].issues[0].title, 'Second Task');
+  assert.equal(contextsReceived.length, 2);
+  assert.equal(contextsReceived[1].owner, 'SHAM-MAX');
+  assert.equal(contextsReceived[1].repository, 'new-kanban-board');
+});
+
+test('individual issue cancellation removes only target issue with confirmation', async () => {
+  const env = await panel();
+  env.get('input').value = 'Get issues';
+  const sending = env.get('form').emit('submit');
+  await settle();
+
+  const issuePlan = {
+    issues: [
+      { id: '1', title: 'Task Alpha', issue_type: 'task', priority: 'High', body: 'Body 1' },
+      { id: '2', title: 'Task Beta', issue_type: 'task', priority: 'Low', body: 'Body 2' }
+    ]
+  };
+
+  env.resolveAI({ reply: 'Here are the issues.', issuePlan });
+  await sending;
+
+  let cards = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-issue-card'));
+  assert.equal(cards.length, 2);
+
+  // Click Cancel on Card 1
+  const card1Actions = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-issue-card-actions'));
+  const cancelBtn = walk(card1Actions).find(el => el.textContent === 'Cancel');
+  await cancelBtn.click();
+  await settle();
+
+  // Verify confirmation appears
+  const confirmBox = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-issue-cancel-confirm'));
+  assert.ok(confirmBox);
+  assert.match(confirmBox.textContent, /Cancel this issue\?/);
+
+  // Click "Keep" to dismiss
+  const keepBtn = walk(confirmBox).find(el => el.textContent === 'Keep');
+  await keepBtn.click();
+  await settle();
+
+  // Card 1 still present and not deleted
+  assert.equal(issuePlan.issues.length, 2);
+
+  // Click Cancel and then "Yes, Remove"
+  const cancelBtnAgain = walk(cards[0]).find(el => el.textContent === 'Cancel');
+  await cancelBtnAgain.click();
+  await settle();
+
+  const removeBtn = walk(cards[0]).find(el => el.textContent === 'Yes, Remove');
+  await removeBtn.click();
+  await settle();
+
+  // Verify only Task Alpha was removed from proposal state and DOM
+  assert.equal(issuePlan.issues.length, 1);
+  assert.equal(issuePlan.issues[0].title, 'Task Beta');
+
+  cards = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-issue-card'));
+  assert.equal(cards.length, 1);
+  assert.match(walk(cards[0]).map(el => el.textContent).join(' '), /Task Beta/);
+});
+
+test('individual issue creation with SHAM-MAX/GitHub-Kanban-Practice context passes exact repo and single issue', async () => {
+  let createdPayload = null;
+  let createdContext = null;
+
+  const env = await panel({
+    createIssue: async (plan, ctx) => {
+      createdPayload = plan;
+      createdContext = ctx;
+      return {
+        ok: true,
+        json: async () => ({
+          results: [{
+            title: plan.issues[0].title,
+            number: 99,
+            url: `https://github.com/${ctx.owner}/${ctx.repository}/issues/99`,
+            status: 'success'
+          }]
+        })
+      };
+    }
+  });
+
+  // Emulate user on SHAM-MAX/GitHub-Kanban-Practice
+  env.window.postMessage({
+    type: 'relay-ai-host-context',
+    context: {
+      host: 'github.com',
+      owner: 'SHAM-MAX',
+      repository: 'GitHub-Kanban-Practice',
+      url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice'
+    }
+  });
+  await settle();
+
+  assert.equal(env.get('repository').textContent, 'SHAM-MAX/GitHub-Kanban-Practice');
+
+  env.get('input').value = 'Create tasks for kanban board';
+  const sending = env.get('form').emit('submit');
+  await settle();
+
+  const proposedPlan = {
+    issues: [
+      { id: 'kanban-1', title: 'Implement Kanban Column Dragging', issue_type: 'user_story', priority: 'High', body: 'Support drag & drop' },
+      { id: 'kanban-2', title: 'Add Column WIP Limit', issue_type: 'task', priority: 'Medium', body: 'Set max card limit' }
+    ]
+  };
+
+  env.resolveAI({
+    reply: 'Proposed 2 issues for SHAM-MAX/GitHub-Kanban-Practice',
+    issuePlan: proposedPlan,
+    context: { owner: 'SHAM-MAX', repository: 'GitHub-Kanban-Practice' }
+  });
+  await sending;
+
+  const cards = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-issue-card'));
+  assert.equal(cards.length, 2);
+
+  // Click Create on the first ticket only
+  const card1Actions = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-issue-card-actions'));
+  const card1CreateBtn = walk(card1Actions).find(el => el.textContent === 'Create');
+  assert.ok(card1CreateBtn);
+
+  await card1CreateBtn.click();
+  await settle();
+
+  // Verify exact repository context and single ticket sent
+  assert.equal(createdContext.owner, 'SHAM-MAX');
+  assert.equal(createdContext.repository, 'GitHub-Kanban-Practice');
+  assert.equal(createdPayload.issues.length, 1);
+  assert.equal(createdPayload.issues[0].title, 'Implement Kanban Column Dragging');
+  assert.equal(createdPayload.issues[0].id, 'kanban-1');
+
+  // Verify Card 1 transitioned to success and Card 2 is untouched
+  assert.match(walk(cards[0]).map(el => el.textContent).join(' '), /Created in GitHub/);
+  assert.match(walk(cards[0]).map(el => el.textContent).join(' '), /#99/);
+  assert.equal(proposedPlan.issues[1]._created, undefined);
+});
+
+test('proposed issue cards display assignment recommendations and send selected assignee on creation', async () => {
+  let createdPayload = null;
+  let recsCalledWith = null;
+
+  const env = await panel({
+    checkAuth: async () => true,
+    createIssue: async (singlePlan) => {
+      createdPayload = singlePlan;
+      return {
+        ok: true,
+        json: async () => ({
+          results: [{
+            title: singlePlan.issues[0].title,
+            number: 101,
+            url: 'https://github.com/SHAM-MAX/new-kanban-board/issues/101',
+            status: 'success'
+          }]
+        })
+      };
+    }
+  });
+
+  env.scope.RelayAIAssistant.getAssignmentRecommendations = async (task, context) => {
+    recsCalledWith = { task, context };
+    return {
+      ok: true,
+      json: async () => ({
+        recommendations: [
+          {
+            githubUsername: 'alice',
+            overallScore: 92,
+            confidence: 'High',
+            rationale: 'Strong match with required technical skills.',
+            criteria: {
+              technicalSkills: { score: 95 },
+              workloadAndEffort: { score: 90 },
+              repositoryFamiliarity: { score: 85 },
+              availabilityAndDeadlines: { score: 100 },
+              growthAndFairness: { score: 80 }
+            },
+            missingDataWarnings: []
+          },
+          {
+            githubUsername: 'bob',
+            overallScore: 68,
+            confidence: 'Medium',
+            rationale: 'Moderate workload bandwidth.',
+            criteria: {
+              technicalSkills: { score: 60 },
+              workloadAndEffort: { score: 70 },
+              repositoryFamiliarity: { score: 50 },
+              availabilityAndDeadlines: { score: 80 },
+              growthAndFairness: { score: 75 }
+            },
+            missingDataWarnings: ['No repository contributions recorded']
+          }
+        ],
+        warnings: []
+      })
+    };
+  };
+
+  env.get('input').value = 'Propose backend feature';
+  const sending = env.get('form').emit('submit');
+  await settle();
+
+  const proposedPlan = {
+    issues: [
+      { id: 'task-1', title: 'Setup database pool', issue_type: 'task', priority: 'High', body: 'Configure pg pool', labels: ['postgresql'] }
+    ]
+  };
+
+  env.resolveAI({
+    reply: 'Proposed plan',
+    issuePlan: proposedPlan,
+    context: { owner: 'SHAM-MAX', repository: 'new-kanban-board' }
+  });
+  await sending;
+  await settle();
+
+  const cards = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-issue-card'));
+  assert.equal(cards.length, 1);
+
+  // Recommendations should be requested
+  assert.ok(recsCalledWith);
+  assert.equal(recsCalledWith.task.title, 'Setup database pool');
+  assert.equal(recsCalledWith.context.owner, 'SHAM-MAX');
+
+  // Candidate cards rendered
+  const candCards = walk(cards[0]).filter(el => el.classList && el.classList.contains('relay-ai-candidate-card'));
+  assert.equal(candCards.length, 2);
+  assert.match(candCards[0].textContent, /@alice/);
+  assert.match(candCards[0].textContent, /92%/);
+  assert.match(candCards[0].textContent, /High conf/);
+  assert.match(candCards[1].textContent, /@bob/);
+
+  // Advisory confirmation: Click candidate Alice to select
+  await candCards[0].click();
+  await settle();
+
+  assert.equal(proposedPlan.issues[0].assignee, 'alice');
+  assert.equal(proposedPlan.issues[0].assignees.length, 1);
+  assert.equal(proposedPlan.issues[0].assignees[0], 'alice');
+
+  // Click Create on the card
+  const createBtn = walk(cards[0]).find(el => el.textContent === 'Create');
+  assert.ok(createBtn);
+  await createBtn.click();
+  await settle();
+
+  // Verify single ticket created includes assignees
+  assert.ok(createdPayload);
+  assert.equal(createdPayload.issues.length, 1);
+  assert.equal(createdPayload.issues[0].assignees.length, 1);
+  assert.equal(createdPayload.issues[0].assignees[0], 'alice');
+  assert.equal(proposedPlan.issues[0]._created, true);
+});
+
+test('developer profile modal can be opened and saves updated profile', async () => {
+  let profileSaved = null;
+
+  const env = await panel({
+    checkAuth: async () => true
+  });
+
+  env.scope.RelayAIAssistant.getAssignmentRecommendations = async () => ({
+    ok: true,
+    json: async () => ({ recommendations: [], warnings: ['No assignees'] })
+  });
+
+  env.scope.RelayAIAssistant.getDeveloperProfile = async () => ({
+    ok: true,
+    json: async () => ({
+      profile: {
+        declared_skills: ['node.js'],
+        weekly_capacity_hours: 35,
+        max_concurrent_tasks: 2,
+        is_available: true,
+        current_focus: 'Core'
+      }
+    })
+  });
+
+  env.scope.RelayAIAssistant.upsertDeveloperProfile = async (data) => {
+    profileSaved = data;
+    return {
+      ok: true,
+      json: async () => ({ profile: data })
+    };
+  };
+
+  env.get('input').value = 'Test ticket';
+  const sending = env.get('form').emit('submit');
+  await settle();
+
+  env.resolveAI({
+    reply: 'Done',
+    issuePlan: { issues: [{ id: '1', title: 'Task 1', body: 'Body' }] },
+    context: { owner: 'SHAM-MAX', repository: 'new-kanban-board' }
+  });
+  await sending;
+  await settle();
+
+  const editProfileBtn = walk(env.get('messages')).find(el => el.textContent === 'Edit Dev Profile');
+  assert.ok(editProfileBtn);
+
+  await editProfileBtn.click();
+  await settle();
+
+  const modal = walk(env.document).find(el => el.classList && el.classList.contains('relay-ai-profile-modal'));
+  assert.ok(modal);
+
+  const saveBtn = walk(modal).find(el => el.textContent === 'Save Profile');
+  assert.ok(saveBtn);
+  await saveBtn.click();
+  await settle();
+
+  assert.ok(profileSaved);
+  assert.equal(typeof profileSaved.weeklyCapacityHours, 'number');
 });

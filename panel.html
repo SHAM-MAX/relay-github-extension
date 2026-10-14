@@ -37,8 +37,8 @@
         <h2>Preferences</h2>
       </div>
       <div class="relay-ai-subview-content">
-        <button id="relay-ai-pref-clear-current" class="relay-ai-btn relay-ai-btn-secondary" style="width:100%; margin-bottom:12px;">Clear Current Conversation</button>
-        <button id="relay-ai-pref-clear-all" class="relay-ai-btn relay-ai-btn-danger" style="width:100%;">Clear All History</button>
+        <button id="relay-ai-pref-clear-current" class="relay-ai-btn relay-ai-btn-secondary relay-ai-btn-full relay-ai-mb-12">Clear Current Conversation</button>
+        <button id="relay-ai-pref-clear-all" class="relay-ai-btn relay-ai-btn-danger relay-ai-btn-full">Clear All History</button>
       </div>
     </div>
 
@@ -49,11 +49,11 @@
         </button>
         <h2>About Relay AI</h2>
       </div>
-      <div class="relay-ai-subview-content" style="text-align:center; padding-top:40px;">
-        <div class="relay-ai-mark" style="width:60px; height:60px; margin: 0 auto 16px;"></div>
-        <h3 style="margin-bottom:8px; font-size:18px; color:white;">Relay AI</h3>
-        <p style="color:var(--relay-ai-text-secondary); margin-bottom:16px;">Your GitHub Assistant</p>
-        <p style="color:var(--relay-ai-text-secondary); font-size:12px;">Version <span id="relay-ai-version">...</span></p>
+      <div class="relay-ai-subview-content relay-ai-about-content">
+        <div class="relay-ai-mark relay-ai-about-mark"></div>
+        <h3 class="relay-ai-about-title">Relay AI</h3>
+        <p class="relay-ai-about-desc">Your GitHub Assistant</p>
+        <p class="relay-ai-about-version">Version <span id="relay-ai-version">...</span></p>
       </div>
     </div>
 
@@ -644,14 +644,18 @@
           •
         </span>
 
-        <a
-          id="relay-ai-connect"
-          href="https://relay-standalone-backend.onrender.com/extension-connect"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Connect Relay
-        </a>
+        <span id="relay-ai-auth-unauthenticated">
+          <a id="relay-ai-connect" href="#" class="relay-ai-auth-link">
+            Connect Relay
+          </a>
+        </span>
+        <span id="relay-ai-auth-authenticated" hidden>
+          <span class="relay-ai-auth-status">Connected</span>
+          <span>•</span>
+          <a id="relay-ai-logout" href="#" class="relay-ai-auth-link">
+            Logout
+          </a>
+        </span>
 
       </p>
 

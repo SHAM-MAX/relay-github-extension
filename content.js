@@ -62,6 +62,32 @@
 
 
   /* =========================================================
+     AUTH / OAUTH PAGE CHECK
+     ========================================================= */
+
+  function isAuthPage() {
+
+    if (
+      typeof RelayAIContext !== "undefined" &&
+      typeof RelayAIContext.isAuthPage === "function"
+    ) {
+      return RelayAIContext.isAuthPage(location.href);
+    }
+
+    try {
+      const loc = new URL(location.href);
+      if (loc.hostname !== "github.com") return false;
+      const parts = loc.pathname.split("/").filter(Boolean).map(p => p.toLowerCase());
+      if (!parts.length) return false;
+      const first = parts[0];
+      return first === "login" || first === "session" || first === "sessions" || first === "oauth";
+    } catch {
+      return false;
+    }
+  }
+
+
+  /* =========================================================
      ERROR MESSAGE
      ========================================================= */
 
@@ -137,6 +163,10 @@
      ========================================================= */
 
   function openRelay() {
+
+    if (isAuthPage()) {
+      return;
+    }
 
     /*
      * If Relay is already open,
@@ -362,6 +392,7 @@
 
     if (
       !document.body ||
+      isAuthPage() ||
       document.getElementById(
         "relay-ai-launcher"
       )
@@ -546,6 +577,18 @@
       false;
 
     if (stopped) {
+      return;
+    }
+
+
+    /*
+     * Hide launcher and all injected UI on GitHub login/OAuth pages.
+     */
+
+    if (isAuthPage()) {
+
+      removeRelayUI();
+
       return;
     }
 
@@ -774,6 +817,14 @@
             location.href;
 
           schedule();
+
+          return;
+        }
+
+
+        if (isAuthPage()) {
+
+          removeRelayUI();
 
           return;
         }
@@ -1046,9 +1097,11 @@
 
   if (typeof chrome !== 'undefined' && chrome.storage) {
     chrome.storage.local.get(['relay_auto_reopen'], (result) => {
-      if (result.relay_auto_reopen) {
+      if (result?.relay_auto_reopen) {
         chrome.storage.local.remove(['relay_auto_reopen']);
-        openRelay();
+        if (!isAuthPage()) {
+          openRelay();
+        }
       }
     });
   }
