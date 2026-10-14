@@ -1255,3 +1255,50 @@ test('assignment recommendation network failure or 403 displays diagnostic notic
   const manualSelect = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-assignee-manual-select'));
   assert.ok(manualSelect, 'Manual select override dropdown must be preserved');
 });
+
+test('developer profile modal displays loading, empty, and default states correctly', async () => {
+  const env = await panel({
+    checkAuth: async () => true
+  });
+
+  // Mock empty profile response
+  env.scope.RelayAIAssistant.getDeveloperProfile = async () => ({
+    ok: true,
+    json: async () => ({ profile: null })
+  });
+
+  env.get('input').value = 'Profile test';
+  const sending = env.get('form').emit('submit');
+  await settle();
+
+  env.resolveAI({
+    reply: 'Plan with issue',
+    issuePlan: {
+      issues: [{ id: 'task-prof', title: 'Profile test issue', body: 'Body' }]
+    },
+    context: { owner: 'SHAM-MAX', repository: 'new-kanban-board' }
+  });
+  await sending;
+  await settle();
+
+  const editProfileBtn = walk(env.get('messages')).find(el => el.textContent === 'Edit Dev Profile');
+  assert.ok(editProfileBtn);
+
+  await editProfileBtn.click();
+  await settle();
+
+  const modal = walk(env.document).find(el => el.classList && el.classList.contains('relay-ai-profile-modal'));
+  assert.ok(modal);
+
+  // Status message should indicate empty profile state
+  const statusElem = walk(modal).find(el => el.classList && el.classList.contains('relay-ai-issue-card-status'));
+  assert.ok(statusElem);
+  assert.match(statusElem.textContent, /No saved profile found/);
+
+  // Default input values should be present
+  const capInput = walk(modal).find(el => el.type === 'number' && el.value === '40');
+  assert.ok(capInput, 'Weekly capacity default 40 should be set');
+  const tasksInput = walk(modal).find(el => el.type === 'number' && el.value === '3');
+  assert.ok(tasksInput, 'Max tasks default 3 should be set');
+});
+

@@ -619,6 +619,10 @@
           const assignmentSec = document.createElement("div");
           assignmentSec.className = "relay-ai-assignment-section";
 
+          const effectiveContext = (message && message.context && message.context.owner && message.context.repository)
+            ? message.context
+            : currentContext;
+
           const assignHeader = document.createElement("div");
           assignHeader.className = "relay-ai-assignment-header";
 
@@ -631,7 +635,8 @@
           profileBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
           profileBtn.textContent = "Edit Dev Profile";
           profileBtn.addEventListener("click", () => {
-            openProfileModal(effectiveContext);
+            const modalCtx = effectiveContext || currentContext;
+            openProfileModal(modalCtx);
           });
 
           assignHeader.append(assignTitle, profileBtn);
@@ -686,10 +691,6 @@
           assignmentSec.append(currentAssigneeBox, manualSelect);
 
           // Fetch recommendations if not cached or already loaded
-          const effectiveContext = (message && message.context && message.context.owner && message.context.repository)
-            ? message.context
-            : currentContext;
-
           if (issue._recommendations) {
             renderRecommendationsUI(issue._recommendations, issue._recommendationWarnings || []);
           } else if (RelayAIAssistant?.getAssignmentRecommendations && effectiveContext?.owner && effectiveContext?.repository) {
@@ -1183,11 +1184,25 @@
         cancelBtn.addEventListener("click", () => overlay.remove());
 
         // Preload current profile
-        if (RelayAIAssistant?.getDeveloperProfile && context?.owner && context?.repository) {
+        const effectiveModalContext = context || currentContext;
+        if (!effectiveModalContext?.owner || !effectiveModalContext?.repository) {
+          statusSpan.className = "relay-ai-issue-card-status";
+          statusSpan.textContent = "Default profile values shown (no repository selected).";
+        } else if (RelayAIAssistant?.getDeveloperProfile) {
+          statusSpan.className = "relay-ai-issue-card-status";
           statusSpan.textContent = "Loading current profile...";
-          RelayAIAssistant.getDeveloperProfile(context).then(async (res) => {
-            const data = await res.json();
-            statusSpan.textContent = "";
+          RelayAIAssistant.getDeveloperProfile(effectiveModalContext).then(async (res) => {
+            let data = null;
+            try {
+              data = await res.json();
+            } catch (_) {}
+
+            if (!res.ok) {
+              statusSpan.className = "relay-ai-issue-card-status relay-ai-issue-card-status-error";
+              statusSpan.textContent = data?.error || `Unable to load profile (HTTP ${res.status}). Using defaults.`;
+              return;
+            }
+
             if (data?.profile) {
               const p = data.profile;
               if (Array.isArray(p.declared_skills)) skillsIn.value = p.declared_skills.join(", ");
@@ -1195,9 +1210,16 @@
               if (p.max_concurrent_tasks != null) maxTasksIn.value = p.max_concurrent_tasks;
               availIn.value = p.is_available ? "true" : "false";
               if (p.current_focus) focusIn.value = p.current_focus;
+              statusSpan.className = "relay-ai-issue-card-status relay-ai-issue-card-status-success";
+              statusSpan.textContent = "Profile loaded.";
+            } else {
+              // Valid empty/default profile state
+              statusSpan.className = "relay-ai-issue-card-status";
+              statusSpan.textContent = "No saved profile found for this project. Set your skills below.";
             }
-          }).catch(() => {
-            statusSpan.textContent = "";
+          }).catch((err) => {
+            statusSpan.className = "relay-ai-issue-card-status relay-ai-issue-card-status-error";
+            statusSpan.textContent = `Could not connect to profile service (${err.message || 'Network error'}). Using defaults.`;
           });
         }
 
@@ -1219,7 +1241,7 @@
               maxConcurrentTasks,
               isAvailable,
               currentFocus
-            }, context);
+            }, effectiveModalContext);
             const data = await res.json();
             if (!res.ok) throw new Error(data?.error || "Save failed");
 
