@@ -119,6 +119,10 @@ async function panel(opts = {}) {
         }))
       })
     })),
+    getProjectHealth: opts.getProjectHealth || (async () => ({
+      ok: true,
+      json: async () => ({ health: null })
+    })),
     send: (message, context) => {
       env.calls.push({ message, context });
       return new Promise((resolve, reject) => { env.resolveAI = resolve; env.rejectAI = reject; });
@@ -1301,4 +1305,239 @@ test('developer profile modal displays loading, empty, and default states correc
   const tasksInput = walk(modal).find(el => el.type === 'number' && el.value === '3');
   assert.ok(tasksInput, 'Max tasks default 3 should be set');
 });
+
+test('developer profile opens from settings gear menu, saves, and reloads persisted values', async () => {
+  let savedPayload = null;
+  let persistedProfile = {
+    declared_skills: ['python', 'fastapi'],
+    weekly_capacity_hours: 32,
+    max_concurrent_tasks: 2,
+    is_available: true,
+    current_focus: 'Appointment Booking API'
+  };
+
+  const env = await panel({
+    checkAuth: async () => true,
+    url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice'
+  });
+
+  // Supply repository context
+  env.window.postMessage({
+    type: 'relay-ai-host-context',
+    context: {
+      owner: 'SHAM-MAX',
+      repository: 'GitHub-Kanban-Practice',
+      pageType: 'repository'
+    }
+  }, '*');
+  await settle();
+
+  env.scope.RelayAIAssistant.getDeveloperProfile = async (ctx) => {
+    assert.equal(ctx.owner, 'SHAM-MAX');
+    assert.equal(ctx.repository, 'GitHub-Kanban-Practice');
+    return {
+      ok: true,
+      json: async () => ({ profile: persistedProfile })
+    };
+  };
+
+  env.scope.RelayAIAssistant.upsertDeveloperProfile = async (data, ctx) => {
+    assert.equal(ctx.owner, 'SHAM-MAX');
+    assert.equal(ctx.repository, 'GitHub-Kanban-Practice');
+    savedPayload = data;
+    persistedProfile = {
+      declared_skills: data.declaredSkills,
+      weekly_capacity_hours: data.weeklyCapacityHours,
+      max_concurrent_tasks: data.maxConcurrentTasks,
+      is_available: data.isAvailable,
+      current_focus: data.currentFocus
+    };
+    return {
+      ok: true,
+      json: async () => ({ profile: persistedProfile })
+    };
+  };
+
+  // 1. Open gear menu and click Developer Profile
+  await env.get('gear').click();
+  await settle();
+  assert.equal(env.get('gear-menu').classList.contains('hidden'), false);
+
+  const gearProfileBtn = env.get('gear-profile');
+  assert.ok(gearProfileBtn, 'Developer Profile button must exist in settings gear menu');
+  await gearProfileBtn.click();
+  await settle();
+
+  // Menu should close and modal should open
+  assert.equal(env.get('gear-menu').classList.contains('hidden'), true);
+  let modal = walk(env.document).find(el => el.classList && el.classList.contains('relay-ai-profile-modal'));
+  assert.ok(modal, 'Developer profile modal must open upon gear item click');
+
+  // Verify preloaded values from getDeveloperProfile
+  const skillsIn = walk(modal).find(el => el.placeholder && el.placeholder.includes('react, node.js'));
+  assert.ok(skillsIn);
+  assert.equal(skillsIn.value, 'python, fastapi');
+
+  const capIn = walk(modal).find(el => el.type === 'number' && el.value === '32');
+  assert.ok(capIn);
+
+  const focusIn = walk(modal).find(el => el.placeholder && el.placeholder.includes('Backend API'));
+  assert.ok(focusIn);
+  assert.equal(focusIn.value, 'Appointment Booking API');
+
+  // Edit fields and save
+  skillsIn.value = 'python, fastapi, postgresql';
+  capIn.value = '40';
+  focusIn.value = 'Appointment Booking API & Core Engine';
+
+  const saveBtn = walk(modal).find(el => el.textContent === 'Save Profile');
+  assert.ok(saveBtn);
+  await saveBtn.click();
+  await settle();
+
+  assert.ok(savedPayload);
+  assert.deepEqual(Array.from(savedPayload.declaredSkills), ['python', 'fastapi', 'postgresql']);
+  assert.equal(savedPayload.weeklyCapacityHours, 40);
+  assert.equal(savedPayload.currentFocus, 'Appointment Booking API & Core Engine');
+
+  // 2. Re-open developer profile modal from gear to verify persisted values reload
+  await env.get('gear').click();
+  await settle();
+  await gearProfileBtn.click();
+  await settle();
+
+  const reloadedModal = walk(env.document).find(el => el.classList && el.classList.contains('relay-ai-profile-modal'));
+  assert.ok(reloadedModal);
+
+  const reloadedSkills = walk(reloadedModal).find(el => el.placeholder && el.placeholder.includes('react, node.js'));
+  assert.equal(reloadedSkills.value, 'python, fastapi, postgresql');
+  const reloadedCap = walk(reloadedModal).find(el => el.type === 'number' && el.value === '40');
+  assert.ok(reloadedCap);
+});
+
+test('Project Health dashboard renders overall status, critical issues, risks, and next actions', async () => {
+  const mockHealth = {
+    overallStatus: 'at_risk',
+    summary: {
+      totalOpenIssues: 5,
+      totalOpenPulls: 2,
+      overdueCount: 1,
+      stalledCount: 1,
+      blockedCount: 1,
+      workloadConcernsCount: 1,
+      prConcernsCount: 1,
+      dependencyRisksCount: 1
+    },
+    riskExplanations: [
+      '1 issue(s) are overdue past scheduled milestones.',
+      '1 task(s) appear stalled with no activity in over 7 days.'
+    ],
+    recommendedActions: [
+      {
+        issueNumber: 101,
+        type: 'reschedule_or_triage',
+        title: 'Triage overdue issue #101',
+        url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/issues/101',
+        reason: 'Work missed target date on milestone v1.0.'
+      }
+    ],
+    criticalIssues: [
+      {
+        type: 'overdue_issue',
+        number: 101,
+        title: 'Database connection pooling fix',
+        url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/issues/101',
+        severity: 'high',
+        explanation: 'Issue #101 is overdue past milestone v1.0 deadline.'
+      }
+    ],
+    workloadConcerns: [
+      {
+        username: 'alice',
+        type: 'overallocated',
+        severity: 'high',
+        explanation: '@alice has 4 open tasks, exceeding declared concurrent capacity of 2.'
+      }
+    ],
+    prConcerns: [
+      {
+        number: 55,
+        title: 'Fix oauth redirect',
+        url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/pull/55',
+        type: 'ci_failed',
+        severity: 'high',
+        explanation: 'PR #55 has failing CI checks (failure).'
+      }
+    ]
+  };
+
+  let healthCalledContext = null;
+  const env = await panel({
+    checkAuth: async () => true,
+    url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice',
+    getProjectHealth: async (ctx) => {
+      healthCalledContext = ctx;
+      return {
+        ok: true,
+        json: async () => ({ health: mockHealth })
+      };
+    }
+  });
+
+  env.window.postMessage({
+    type: 'relay-ai-host-context',
+    context: {
+      owner: 'SHAM-MAX',
+      repository: 'GitHub-Kanban-Practice',
+      pageType: 'repository'
+    }
+  }, '*');
+  await settle();
+
+  // Open gear menu and click Project Health
+  await env.get('gear').click();
+  await settle();
+  const gearHealthBtn = env.get('gear-health');
+  assert.ok(gearHealthBtn, 'Project Health button must exist in settings gear menu');
+
+  await gearHealthBtn.click();
+  await settle();
+  await settle();
+  await settle();
+
+  // Verify health view is opened
+  const healthView = env.get('health-view');
+  assert.equal(healthView.classList.contains('hidden'), false);
+  assert.equal(healthCalledContext.owner, 'SHAM-MAX');
+  assert.equal(healthCalledContext.repository, 'GitHub-Kanban-Practice');
+
+  // Verify overall status badge
+  const statusBadge = walk(env.document).find(el => el.classList && el.classList.contains('relay-ai-health-status-badge'));
+  assert.ok(statusBadge);
+  assert.equal(statusBadge.textContent, 'AT RISK');
+
+  // Verify metric counts rendered
+  const metricItems = walk(env.document).filter(el => el.classList && el.classList.contains('relay-ai-metric-item'));
+  assert.ok(metricItems.length >= 5);
+
+  // Verify action cards and links allow inspecting on GitHub
+  const actionCards = walk(env.document).filter(el => el.classList && el.classList.contains('relay-ai-action-card'));
+  assert.equal(actionCards.length, 1);
+  const actionLink = walk(actionCards[0]).find(el => el.tagName === 'A');
+  assert.ok(actionLink);
+  assert.equal(actionLink.href, 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/issues/101');
+  assert.equal(actionLink.target, '_blank');
+
+  // Verify flagged issues cards
+  const issueCards = walk(env.document).filter(el => el.classList && el.classList.contains('relay-ai-health-item-card'));
+  assert.ok(issueCards.length >= 3); // 1 critical issue, 1 workload concern, 1 pr concern
+
+  // Verify back button closes view
+  const backBtn = env.get('back-health');
+  assert.ok(backBtn);
+  await backBtn.click();
+  await settle();
+  assert.equal(healthView.classList.contains('hidden'), true);
+});
+
 

@@ -260,6 +260,24 @@
     });
   }
   
+  async function getProjectHealth(context, options = {}) {
+    const fetchImpl = options.fetchImpl || fetch;
+    const owner = encodeURIComponent(context?.owner || '');
+    const repo = encodeURIComponent(context?.repository || '');
+    const thresholdQuery = options.stalledThresholdDays ? `&stalledThresholdDays=${encodeURIComponent(options.stalledThresholdDays)}` : '';
+    const url = ENDPOINT.replace('/assistant', `/pm/health?owner=${owner}&repo=${repo}${thresholdQuery}`);
+    const headers = { 'Accept': 'application/json', ...(options.headers || {}) };
+    const cookie = await getSessionCookie();
+    if (cookie?.value && !headers['Cookie'] && !headers['cookie']) {
+      headers['Cookie'] = `relay_pm_session=${cookie.value}`;
+    }
+    return await fetchImpl(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers
+    });
+  }
+
   const api = Object.freeze({
     send,
     connectionURL,
@@ -271,7 +289,8 @@
     getRepositories,
     getAssignmentRecommendations,
     getDeveloperProfile,
-    upsertDeveloperProfile
+    upsertDeveloperProfile,
+    getProjectHealth
   });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RelayAIAssistant = api;

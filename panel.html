@@ -42,6 +42,22 @@
       </div>
     </div>
 
+    <div id="relay-ai-health-view" class="relay-ai-subview hidden">
+      <div class="relay-ai-subview-header">
+        <button id="relay-ai-back-health" class="relay-ai-subview-back" aria-label="Back">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg> Back
+        </button>
+        <h2>Project Health Intelligence</h2>
+      </div>
+      <div class="relay-ai-subview-content" id="relay-ai-health-content">
+        <div id="relay-ai-health-loading" class="relay-ai-loading">
+          <span class="relay-ai-spinner" aria-hidden="true"></span>
+          Analyzing project health…
+        </div>
+        <div id="relay-ai-health-body" class="hidden"></div>
+      </div>
+    </div>
+
     <div id="relay-ai-about-view" class="relay-ai-subview hidden">
       <div class="relay-ai-subview-header">
         <button id="relay-ai-back-about" class="relay-ai-subview-back" aria-label="Back">
@@ -622,6 +638,8 @@
           <div id="relay-ai-gear-menu" class="relay-ai-gear-menu hidden">
             <button id="relay-ai-gear-history" class="relay-ai-gear-item">Chat History</button>
             <button class="relay-ai-gear-item" id="relay-ai-gear-models">AI Models</button>
+            <button id="relay-ai-gear-profile" class="relay-ai-gear-item">Developer Profile</button>
+            <button id="relay-ai-gear-health" class="relay-ai-gear-item">Project Health</button>
             <button id="relay-ai-gear-prefs" class="relay-ai-gear-item">Preferences</button>
             <button id="relay-ai-gear-about" class="relay-ai-gear-item">About Relay AI</button>
           </div>

@@ -1297,3 +1297,201 @@ textarea:focus-visible {
   font-size: 14px;
   color: #edf4ff;
 }
+
+/* =========================================================
+   PROJECT HEALTH INTELLIGENCE DASHBOARD
+   ========================================================= */
+
+.relay-ai-health-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 24px;
+}
+
+.relay-ai-health-banner {
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(126, 168, 222, 0.25);
+  background: rgba(14, 25, 45, 0.7);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.relay-ai-health-banner-healthy {
+  border-color: rgba(63, 185, 80, 0.4);
+  background: linear-gradient(135deg, rgba(46, 160, 67, 0.12), rgba(13, 21, 39, 0.8));
+}
+
+.relay-ai-health-banner-attention {
+  border-color: rgba(227, 179, 65, 0.4);
+  background: linear-gradient(135deg, rgba(210, 153, 34, 0.12), rgba(13, 21, 39, 0.8));
+}
+
+.relay-ai-health-banner-risk {
+  border-color: rgba(248, 81, 73, 0.4);
+  background: linear-gradient(135deg, rgba(248, 81, 73, 0.14), rgba(13, 21, 39, 0.8));
+}
+
+.relay-ai-health-banner-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.relay-ai-health-status-badge {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  text-transform: uppercase;
+}
+
+.relay-ai-health-status-badge-healthy {
+  background: rgba(46, 160, 67, 0.25);
+  color: #3fb950;
+  border: 1px solid #3fb950;
+}
+
+.relay-ai-health-status-badge-attention {
+  background: rgba(210, 153, 34, 0.25);
+  color: #e3b341;
+  border: 1px solid #e3b341;
+}
+
+.relay-ai-health-status-badge-risk {
+  background: rgba(248, 81, 73, 0.25);
+  color: #ff7b72;
+  border: 1px solid #ff7b72;
+}
+
+.relay-ai-health-repo-label {
+  font-size: 12px;
+  color: #9cb3d8;
+  font-weight: 500;
+}
+
+.relay-ai-health-summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(75px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(126, 168, 222, 0.15);
+}
+
+.relay-ai-metric-item {
+  font-size: 11px;
+  color: #9cb3d8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background: rgba(8, 16, 29, 0.5);
+  padding: 6px 4px;
+  border-radius: 6px;
+}
+
+.relay-ai-metric-item strong {
+  font-size: 16px;
+  color: #edf4ff;
+  font-weight: 700;
+}
+
+.relay-ai-metric-item.text-danger strong {
+  color: #ff7b72;
+}
+
+.relay-ai-metric-item.text-warning strong {
+  color: #e3b341;
+}
+
+.relay-ai-health-section {
+  background: rgba(13, 21, 39, 0.5);
+  border: 1px solid rgba(126, 168, 222, 0.2);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.relay-ai-health-section h3 {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #d2e3fc;
+  letter-spacing: 0.3px;
+}
+
+.relay-ai-health-risk-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #c9d8ee;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.relay-ai-health-items-list,
+.relay-ai-health-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.relay-ai-action-card,
+.relay-ai-health-item-card {
+  background: rgba(8, 16, 29, 0.7);
+  border: 1px solid rgba(126, 168, 222, 0.2);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.relay-ai-action-header,
+.relay-ai-health-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.relay-ai-action-header strong,
+.relay-ai-health-item-header strong {
+  font-size: 12px;
+  color: #edf4ff;
+}
+
+.relay-ai-action-reason,
+.relay-ai-health-item-exp {
+  margin: 4px 0 8px 0;
+  font-size: 11px;
+  color: #9cb3d8;
+  line-height: 1.4;
+}
+
+.relay-ai-action-link {
+  font-size: 11px;
+  font-weight: 600;
+  color: #58a6ff;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.relay-ai-action-link:hover {
+  text-decoration: underline;
+  color: #79c0ff;
+}
+
+.relay-ai-badge-danger {
+  background: rgba(248, 81, 73, 0.2);
+  color: #ff7b72;
+  border: 1px solid rgba(248, 81, 73, 0.4);
+}
+
+.relay-ai-badge-warning {
+  background: rgba(210, 153, 34, 0.2);
+  color: #e3b341;
+  border: 1px solid rgba(210, 153, 34, 0.4);
+}
+

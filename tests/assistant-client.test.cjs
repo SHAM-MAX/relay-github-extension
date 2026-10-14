@@ -224,3 +224,23 @@ test('getDeveloperProfile and upsertDeveloperProfile call backend profile endpoi
   const putData = await putRes.json();
   assert.deepEqual(putData.profile.declaredSkills, ['vue']);
 });
+
+test('getProjectHealth requests health endpoint with context and credentials', async () => {
+  let reqUrl = null;
+  let reqOptions = null;
+  const mockFetch = async (url, opts) => {
+    reqUrl = url;
+    reqOptions = opts;
+    return response(200, { health: { overallStatus: 'healthy', summary: { overdueCount: 0 } } });
+  };
+
+  const context = { owner: 'SHAM-MAX', repository: 'GitHub-Kanban-Practice' };
+  const res = await client.getProjectHealth(context, { stalledThresholdDays: 14, fetchImpl: mockFetch });
+
+  assert.equal(reqUrl, 'https://relay-standalone-backend.onrender.com/api/pm/health?owner=SHAM-MAX&repo=GitHub-Kanban-Practice&stalledThresholdDays=14');
+  assert.equal(reqOptions.method, 'GET');
+  assert.equal(reqOptions.credentials, 'include');
+  const data = await res.json();
+  assert.equal(data.health.overallStatus, 'healthy');
+});
+
