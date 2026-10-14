@@ -1219,3 +1219,39 @@ test('insufficient evidence displays clear notice and handles GitHub issue assig
   assert.ok(statusElem);
   assert.match(statusElem.textContent, /cannot be assigned/);
 });
+
+test('assignment recommendation network failure or 403 displays diagnostic notice and preserves manual selection', async () => {
+  const env = await panel({
+    checkAuth: async () => true
+  });
+
+  // Mock getAssignmentRecommendations rejecting with network error
+  env.scope.RelayAIAssistant.getAssignmentRecommendations = async () => {
+    throw new Error('Failed to fetch');
+  };
+
+  env.get('input').value = 'Network test';
+  const sending = env.get('form').emit('submit');
+  await settle();
+
+  env.resolveAI({
+    reply: 'Plan with issue',
+    issuePlan: {
+      issues: [{ id: 'task-err', title: 'Network fail issue', body: 'Body' }]
+    },
+    context: { owner: 'SHAM-MAX', repository: 'new-kanban-board' }
+  });
+  await sending;
+  await settle();
+
+  const cards = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-issue-card'));
+  assert.equal(cards.length, 1);
+
+  // Diagnostic notice should be displayed in candidates container
+  const diagnosticElem = walk(cards[0]).find(el => el.textContent && el.textContent.includes('Diagnostic: Backend connection failed'));
+  assert.ok(diagnosticElem, 'Diagnostic notice must be rendered on backend failure');
+
+  // Manual select dropdown is still present and functional
+  const manualSelect = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-assignee-manual-select'));
+  assert.ok(manualSelect, 'Manual select override dropdown must be preserved');
+});

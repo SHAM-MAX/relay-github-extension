@@ -705,21 +705,40 @@
               priority: issue.priority || 'Medium',
               risk: 'Low'
             }, effectiveContext).then(async (res) => {
-              const data = await res.json();
+              let data = null;
+              try {
+                data = await res.json();
+              } catch (_) {}
               loadingText.remove();
               if (res.ok && data?.recommendations) {
                 issue._recommendations = data.recommendations;
                 issue._recommendationWarnings = data.warnings || [];
                 renderRecommendationsUI(data.recommendations, data.warnings || []);
               } else {
+                const warnMsg = data?.error || (res.status === 403 ? "GitHub permissions or Relay login required" : `Could not load recommendations (${res.status || 'Network Error'})`);
                 const warn = document.createElement("div");
                 warn.className = "relay-ai-assignment-warning";
-                warn.textContent = data?.error || "Could not load recommendations";
+                warn.textContent = "⚠ " + warnMsg;
                 warningsDiv.hidden = false;
                 warningsDiv.append(warn);
+
+                const diagnosticText = document.createElement("div");
+                diagnosticText.className = "relay-ai-assignment-loading relay-ai-assignment-insufficient";
+                diagnosticText.textContent = `Diagnostic: ${warnMsg}. You can still select an assignee manually below.`;
+                candidatesDiv.append(diagnosticText);
               }
-            }).catch(() => {
+            }).catch((err) => {
               loadingText.remove();
+              const warn = document.createElement("div");
+              warn.className = "relay-ai-assignment-warning";
+              warn.textContent = "⚠ Could not connect to assignment service. Ensure extension is connected.";
+              warningsDiv.hidden = false;
+              warningsDiv.append(warn);
+
+              const diagnosticText = document.createElement("div");
+              diagnosticText.className = "relay-ai-assignment-loading relay-ai-assignment-insufficient";
+              diagnosticText.textContent = "Diagnostic: Backend connection failed. Manual selection is still available below.";
+              candidatesDiv.append(diagnosticText);
             });
           }
 
