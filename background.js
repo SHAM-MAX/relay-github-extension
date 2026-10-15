@@ -185,6 +185,22 @@ chrome.runtime.onMessage.addListener(
       return true; // Keep channel open for async response
     }
 
+    if (message?.type === "relay-ai-open-workspace") {
+      try {
+        const owner = message.context?.owner ? encodeURIComponent(message.context.owner) : "";
+        const repo = message.context?.repository ? encodeURIComponent(message.context.repository) : "";
+        const query = owner && repo ? `?owner=${owner}&repo=${repo}` : "";
+        const url = chrome.runtime.getURL(`dashboard.html${query}`);
+        if (chrome.tabs?.create) {
+          chrome.tabs.create({ url });
+        }
+        respond({ ok: true, url });
+      } catch (err) {
+        respond({ ok: false, error: err.message });
+      }
+      return true;
+    }
+
     if (
       message?.type !==
       "relay-ai-open-panel"

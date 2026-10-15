@@ -318,11 +318,52 @@
 
 
     /*
+     * Full workspace expand button.
+     */
+
+    const expand =
+      document.createElement(
+        "button"
+      );
+
+    expand.type =
+      "button";
+
+    expand.id =
+      "relay-ai-floating-expand";
+
+    expand.className =
+      "relay-ai-floating-expand";
+
+    expand.textContent =
+      "⤢";
+
+    expand.setAttribute(
+      "aria-label",
+      "Open Full-Page Workspace"
+    );
+
+    expand.title =
+      "Open Full-Page Workspace in new tab";
+
+    expand.addEventListener(
+      "click",
+      () => {
+        const ctx = context();
+        chrome.runtime.sendMessage({
+          type: "relay-ai-open-workspace",
+          context: ctx
+        });
+      }
+    );
+
+    /*
      * Build panel.
      */
 
     panel.append(
       frame,
+      expand,
       close
     );
 

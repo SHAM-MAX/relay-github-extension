@@ -56,6 +56,9 @@
         "panel.html",
         "panel.css",
         "panel.js",
+        "dashboard.html",
+        "dashboard.css",
+        "dashboard.js",
         "context.js",
         "assistant-client.js"
       ],

@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 class Element {
   constructor(tag = 'div') {
     this.tagName = tag.toUpperCase(); this.children = []; this.attributes = {};
-    this.handlers = {}; this.dataset = {}; this.value = ''; this.textContent = '';
+    this.handlers = {}; this.dataset = {}; this.value = ''; this._textContent = '';
     this.hidden = false; this.disabled = false; this.scrollHeight = 500;
     this.style = {};
   }
@@ -68,15 +68,22 @@ class Element {
   }
 }
 function walk(el) { return [el, ...el.children.flatMap(walk)]; }
-function documentFixture(panel = false) {
+function documentFixture(type = false) {
   const document = new Element('document');
   document.documentElement = new Element('html'); document.append(document.documentElement);
   document.body = new Element('body'); document.documentElement.append(document.body);
   document.createElement = tag => new Element(tag);
   document.getElementById = id => walk(document).find(el => el.id === id) || null;
-  document.querySelectorAll = selector => selector === '[data-relay-prompt]' ? walk(document).filter(el => el.dataset.relayPrompt) : [];
-  document.querySelector = () => null;
-  if (panel) {
+  document.querySelectorAll = selector => {
+    if (selector === '[data-relay-prompt]') return walk(document).filter(el => el.dataset.relayPrompt);
+    if (selector.startsWith('.')) {
+      const cls = selector.slice(1);
+      return walk(document).filter(el => el.classList && el.classList.contains(cls));
+    }
+    return [];
+  };
+  document.querySelector = selector => document.querySelectorAll(selector)[0] || null;
+  if (type === true || type === 'panel') {
     const html = fs.readFileSync(path.join(root, 'panel.html'), 'utf8');
     for (const match of html.matchAll(/<([\w-]+)\b[^>]*\bid="([^"]+)"([^>]*)>/g)) {
       const element = document.createElement(match[1]); element.id = match[2];
@@ -89,6 +96,20 @@ function documentFixture(panel = false) {
     for (const match of html.matchAll(/data-relay-prompt="([^"]+)"/g)) {
       const element = document.createElement('button'); element.dataset.relayPrompt = match[1]; document.body.append(element);
     }
+  } else if (type === 'dashboard') {
+    const html = fs.readFileSync(path.join(root, 'dashboard.html'), 'utf8');
+    for (const match of html.matchAll(/<([\w-]+)\b([^>]*)\bid="([^"]+)"([^>]*)>/g)) {
+      const element = document.createElement(match[1]); element.id = match[3];
+      element.hidden = /\bhidden\b/.test(match[0]); 
+      const classMatch = match[0].match(/\bclass="([^"]+)"/);
+      if (classMatch) element.className = classMatch[1];
+      const dataView = match[0].match(/data-view="([^"]+)"/);
+      if (dataView) element.setAttribute('data-view', dataView[1]);
+      const dataPrompt = match[0].match(/data-prompt="([^"]+)"/);
+      if (dataPrompt) element.setAttribute('data-prompt', dataPrompt[1]);
+      if (element.hidden && !element.classList.contains('hidden')) element.classList.add('hidden');
+      document.body.append(element);
+    }
   }
   return document;
 }
@@ -96,16 +117,25 @@ function event() {
   const listeners = [];
   return { listeners, addListener: callback => listeners.push(callback), emit: (...args) => listeners.map(callback => callback(...args)) };
 }
-function environment({ panel = false, url = 'https://github.com/SHAM-MAX/new-kanban-board', storageData = {} } = {}) {
-  const document = documentFixture(panel);
+function environment({ panel = false, dashboard = false, url = 'https://github.com/SHAM-MAX/new-kanban-board', storageData = {} } = {}) {
+  const fixtureType = dashboard ? 'dashboard' : (panel ? 'panel' : false);
+  const document = documentFixture(fixtureType);
   const timers = new Map(); const intervals = []; const observers = []; const sent = [];
   let nextTimer = 1;
   const window = new Element('window'); window.parent = window; window.postMessage = (msg) => Promise.resolve().then(() => window.emit('message', { data: msg, source: window }));
-  const location = { href: url };
+  const location = { href: url, search: url.includes('?') ? url.slice(url.indexOf('?')) : '' };
   const current = { id: 10, windowId: 1, url };
+  const createdTabs = [];
   const chrome = {
     runtime: { id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', onMessage: event(), onStartup: event(), onInstalled: event(), getURL: path => 'chrome-extension://' + path, sendMessage: async message => { sent.push(message); return { ok: true }; } },
-    tabs: { query: (q, cb) => cb ? cb([{ ...current }]) : Promise.resolve([{ ...current }]), sendMessage: (id, msg, cb) => { const ctx = { url: current.url, branch: null, owner: 'SHAM-MAX', repository: 'new-kanban-board' }; return cb ? cb({ context: ctx }) : Promise.resolve({ context: ctx }); }, onActivated: event(), onUpdated: event(), onRemoved: event() },
+    tabs: {
+      query: (q, cb) => cb ? cb([{ ...current }]) : Promise.resolve([{ ...current }]),
+      sendMessage: (id, msg, cb) => { const ctx = { url: current.url, branch: null, owner: 'SHAM-MAX', repository: 'new-kanban-board' }; return cb ? cb({ context: ctx }) : Promise.resolve({ context: ctx }); },
+      create: (opts, cb) => { createdTabs.push(opts); if (cb) cb({ id: 99, ...opts }); return Promise.resolve({ id: 99, ...opts }); },
+      onActivated: event(),
+      onUpdated: event(),
+      onRemoved: event()
+    },
     windows: { getCurrent: async () => ({ id: 1 }) },
     action: { onClicked: event(), setBadgeText() {}, setTitle() {} },
     sidePanel: { open: async () => {}, setOptions: async () => {} },
@@ -152,7 +182,7 @@ function environment({ panel = false, url = 'https://github.com/SHAM-MAX/new-kan
     for (const [id, timer] of ready) { timers.delete(id); timer.callback(); }
     await settle();
   }
-  return { scope, chrome, current, location, document, window, observers, sent, intervals, run, tick, timers, get: suffix => document.getElementById('relay-ai-' + suffix) };
+  return { scope, chrome, current, location, document, window, observers, sent, intervals, run, tick, timers, createdTabs, get: suffix => document.getElementById('relay-ai-' + suffix) };
 }
 async function settle() { for (let i = 0; i < 12; i++) await Promise.resolve(); }
 module.exports = { environment, settle, walk, root };

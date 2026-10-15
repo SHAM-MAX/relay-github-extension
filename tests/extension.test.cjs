@@ -53,7 +53,7 @@ test('MV3 package permits only GitHub injection and the Relay backend connection
   assert.deepEqual(manifest.content_scripts[0].matches, ['https://github.com/*']);
   const files = [manifest.background.service_worker, ...manifest.content_scripts[0].js, ...manifest.content_scripts[0].css, ...Object.values(manifest.icons)];
   for (const file of files) assert.ok(fs.existsSync(path.join(root, file)), file);
-  for (const file of ['background.js', 'context.js', 'content.js', 'panel.js']) {
+  for (const file of ['background.js', 'context.js', 'content.js', 'panel.js', 'dashboard.js']) {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
     assert.doesNotMatch(source, /\b(fetch|XMLHttpRequest|WebSocket|FileReader|eval)\s*\(|\.innerHTML\s*=|chrome\.(cookies)|localStorage|sessionStorage|console\.(log|error)/);
     assert.doesNotMatch(source, /github_pat_[a-zA-Z0-9_]+|gh[pousr]_[a-zA-Z0-9]{20,}|-----BEGIN .*PRIVATE KEY/);
@@ -1979,6 +1979,226 @@ test('gear menu opens PM Reports & Delivery Forecasting view and renders report 
   await settle();
   assert.equal(reportsView.classList.contains('hidden'), true);
 });
+
+test('background handler opens full-page workspace tab on relay-ai-open-workspace', async () => {
+  const env = environment();
+  env.run('background.js');
+  const handler = env.chrome.runtime.onMessage.listeners[0];
+  const sender = { id: env.chrome.runtime.id, frameId: 0, tab: { id: 10 }, url: base };
+  let reply;
+  handler({
+    type: 'relay-ai-open-workspace',
+    context: { owner: 'SHAM-MAX', repository: 'new-kanban-board' }
+  }, sender, res => { reply = res; });
+  await settle();
+  assert.equal(reply.ok, true);
+  assert.ok(reply.url.includes('dashboard.html?owner=SHAM-MAX&repo=new-kanban-board'));
+  assert.equal(env.createdTabs.length, 1);
+  assert.ok(env.createdTabs[0].url.includes('dashboard.html?owner=SHAM-MAX&repo=new-kanban-board'));
+});
+
+test('floating panel contains full workspace expand button that requests opening tab', async () => {
+  const env = environment();
+  env.run('context.js');
+  env.run('content.js');
+  await env.get('launcher-button').click();
+  await settle();
+  const expandBtn = walk(env.document).find(el => el.id === 'relay-ai-floating-expand');
+  assert.ok(expandBtn, 'Expand button must exist in panel shell');
+  assert.equal(expandBtn.textContent, '⤢');
+  await expandBtn.click();
+  await settle();
+  const sentWorkspace = env.sent.find(msg => msg.type === 'relay-ai-open-workspace');
+  assert.ok(sentWorkspace, 'Clicking expand sends relay-ai-open-workspace message');
+  assert.equal(sentWorkspace.context.owner, 'SHAM-MAX');
+  assert.equal(sentWorkspace.context.repository, 'new-kanban-board');
+});
+
+test('dashboard workspace initializes repository context from URL params and switches views', async () => {
+  const env = environment({
+    dashboard: true,
+    url: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/dashboard.html?owner=SHAM-MAX&repo=new-kanban-board'
+  });
+  env.scope.RelayAIAssistant = {
+    checkAuth: async () => true,
+    getRepositories: async () => ({
+      ok: true,
+      json: async () => ({
+        repositories: [{ full_name: 'SHAM-MAX/new-kanban-board' }, { full_name: 'SHAM-MAX/relay-core' }]
+      })
+    }),
+    getProjectHealth: async () => ({
+      ok: true,
+      json: async () => ({
+        health: {
+          score: 92,
+          overallStatus: 'healthy',
+          overdueTasksCount: 0,
+          summary: 'Sprint velocity optimal'
+        }
+      })
+    }),
+    getTraceability: async () => ({
+      ok: true,
+      json: async () => ({
+        traceability: [
+          { id: 'REQ-1', title: 'OAuth Flow', status: 'verified', workItems: [{ number: 10, title: 'Token exchange', state: 'closed' }] }
+        ],
+        summary: { totalRequirements: 1, verifiedRequirements: 1 }
+      })
+    }),
+    getPmReports: async () => ({
+      ok: true,
+      json: async () => ({
+        data: {
+          deliveryForecast: { estimatedCompletionDate: '2026-11-15', confidence: 'High' },
+          stakeholderUpdateDraft: 'All milestones on schedule.'
+        }
+      })
+    }),
+    send: async (msg, ctx) => ({ reply: `Assistant: ${msg}`, context: ctx })
+  };
+
+  env.run('context.js');
+  env.run('dashboard.js');
+  await settle();
+
+  // Verify topbar repository selector
+  const repoSelect = walk(env.document).find(el => el.id === 'relay-repo-select');
+  assert.ok(repoSelect);
+  assert.equal(repoSelect.value, 'SHAM-MAX/new-kanban-board');
+
+  // Verify view switching
+  const dashView = walk(env.document).find(el => el.id === 'relay-view-dashboard');
+  const chatView = walk(env.document).find(el => el.id === 'relay-view-chat');
+  const healthView = walk(env.document).find(el => el.id === 'relay-view-health');
+  assert.equal(dashView.classList.contains('hidden'), false);
+  assert.equal(chatView.classList.contains('hidden'), true);
+
+  const chatNavBtn = walk(env.document).find(el => el.id === 'relay-nav-chat');
+  assert.ok(chatNavBtn);
+  await chatNavBtn.click();
+  await settle();
+  assert.equal(dashView.classList.contains('hidden'), true);
+  assert.equal(chatView.classList.contains('hidden'), false);
+
+  const healthNavBtn = walk(env.document).find(el => el.id === 'relay-nav-health');
+  assert.ok(healthNavBtn);
+  await healthNavBtn.click();
+  await settle();
+  assert.equal(chatView.classList.contains('hidden'), true);
+  assert.equal(healthView.classList.contains('hidden'), false);
+});
+
+test('dashboard workspace chat sends prompt, renders assistant response, and proposes reviewable issues', async () => {
+  const env = environment({
+    dashboard: true,
+    url: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/dashboard.html?owner=SHAM-MAX&repo=new-kanban-board'
+  });
+  let sentMessage = null;
+  let sentContext = null;
+  env.scope.RelayAIAssistant = {
+    checkAuth: async () => true,
+    getRepositories: async () => ({ ok: true, json: async () => ({ repositories: [{ full_name: 'SHAM-MAX/new-kanban-board' }] }) }),
+    getProjectHealth: async () => ({ ok: true, json: async () => ({ health: null }) }),
+    getTraceability: async () => ({ ok: true, json: async () => ({ traceability: [], summary: {} }) }),
+    getPmReports: async () => ({ ok: true, json: async () => ({ data: {} }) }),
+    send: async (msg, ctx) => {
+      sentMessage = msg;
+      sentContext = ctx;
+      return {
+        reply: 'I have broken down the requirements into 2 issues.',
+        issuePlan: {
+          issues: [
+            { title: 'Add database schema', body: 'Design schema migration', priority: 'High' },
+            { title: 'Create REST endpoints', body: 'Implement express routers', priority: 'Medium' }
+          ]
+        }
+      };
+    },
+    createIssue: async (plan, ctx) => ({
+      ok: true,
+      json: async () => ({ results: [{ number: 45, status: 'success' }] })
+    })
+  };
+
+  env.run('context.js');
+  env.run('dashboard.js');
+  await settle();
+
+  // Switch to chat view
+  const chatNavBtn = walk(env.document).find(el => el.id === 'relay-nav-chat');
+  await chatNavBtn.click();
+  await settle();
+
+  const chatInput = walk(env.document).find(el => el.id === 'relay-chat-input');
+  assert.ok(chatInput);
+  chatInput.value = 'Break down phase 2 sprint';
+  await chatInput.emit('input');
+
+  const chatForm = walk(env.document).find(el => el.id === 'relay-chat-form');
+  assert.ok(chatForm);
+  await chatForm.emit('submit');
+  await settle();
+
+  assert.equal(sentMessage, 'Break down phase 2 sprint');
+  assert.equal(sentContext.owner, 'SHAM-MAX');
+  assert.equal(sentContext.repository, 'new-kanban-board');
+
+  // Verify proposed issues panel rendered
+  const proposedPanel = walk(env.document).find(el => el.id === 'relay-proposed-issues-panel');
+  assert.ok(proposedPanel);
+  assert.equal(proposedPanel.classList.contains('hidden'), false);
+
+  const proposedCount = walk(env.document).find(el => el.id === 'relay-proposed-count');
+  assert.equal(proposedCount.textContent, '2 Tickets');
+
+  // Confirm issue creation
+  const createBtns = walk(env.document).filter(el => el.tagName === 'BUTTON' && el.textContent && el.textContent.includes('Confirm & Create in GitHub'));
+  assert.equal(createBtns.length, 2);
+  await createBtns[0].click();
+  await settle();
+  assert.ok(createBtns[0].textContent.includes('Created #45'));
+});
+
+test('dashboard repository dropdown switch refreshes repository-scoped context', async () => {
+  const env = environment({
+    dashboard: true,
+    url: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/dashboard.html?owner=SHAM-MAX&repo=new-kanban-board'
+  });
+  const healthRequests = [];
+  env.scope.RelayAIAssistant = {
+    checkAuth: async () => true,
+    getRepositories: async () => ({
+      ok: true,
+      json: async () => ({
+        repositories: [{ full_name: 'SHAM-MAX/new-kanban-board' }, { full_name: 'octocat/Hello-World' }]
+      })
+    }),
+    getProjectHealth: async (ctx) => {
+      healthRequests.push(ctx.owner + '/' + ctx.repository);
+      return { ok: true, json: async () => ({ health: { score: 95, overallStatus: 'healthy' } }) };
+    },
+    getTraceability: async () => ({ ok: true, json: async () => ({ traceability: [], summary: {} }) }),
+    getPmReports: async () => ({ ok: true, json: async () => ({ data: {} }) })
+  };
+
+  env.run('context.js');
+  env.run('dashboard.js');
+  await settle();
+
+  assert.equal(healthRequests[0], 'SHAM-MAX/new-kanban-board');
+
+  const repoSelect = walk(env.document).find(el => el.id === 'relay-repo-select');
+  assert.ok(repoSelect);
+  await repoSelect.emit('change', { target: { value: 'octocat/Hello-World' } });
+  await settle();
+
+  assert.ok(healthRequests.includes('octocat/Hello-World'));
+  const githubLink = walk(env.document).find(el => el.id === 'relay-view-github-link');
+  assert.equal(githubLink.href, 'https://github.com/octocat/Hello-World');
+});
+
 
 
 
