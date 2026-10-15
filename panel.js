@@ -3626,7 +3626,8 @@
 
           const desc = document.createElement("p");
           desc.className = "relay-ai-req-body";
-          desc.textContent = `${ms.completedIssues}/${ms.totalIssues} issues closed (${ms.completionRate}% complete). Target: ${ms.targetDate || 'None set'}`;
+          const closedCount = ms.closedIssues ?? ms.completedIssues ?? 0;
+          desc.textContent = `${closedCount}/${ms.totalIssues} issues closed (${ms.completionRate}% complete). Target: ${ms.targetDate || 'None set'}`;
 
           card.append(cHeader, desc);
           mCards.append(card);
