@@ -3119,8 +3119,10 @@
     if (!ui["traceability-loading"] || !ui["traceability-body"]) return;
 
     ui["traceability-loading"].classList.remove("hidden");
+    ui["traceability-loading"].hidden = false;
     ui["traceability-loading"].textContent = "Building requirements traceability matrix…";
     ui["traceability-body"].classList.add("hidden");
+    ui["traceability-body"].hidden = true;
     ui["traceability-body"].replaceChildren();
 
     const effectiveContext = currentContext;
@@ -3147,7 +3149,9 @@
       }
 
       ui["traceability-loading"].classList.add("hidden");
+      ui["traceability-loading"].hidden = true;
       ui["traceability-body"].classList.remove("hidden");
+      ui["traceability-body"].hidden = false;
 
       const reqs = data.traceability || [];
       const gaps = data.gaps || {};

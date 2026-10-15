@@ -1650,9 +1650,15 @@ test('Requirements Traceability Matrix dashboard renders requirements, linked is
   await settle();
 
 
-  // Verify traceability view opened
+  // Verify traceability view opened and loading message cleared
   const traceView = env.get('traceability-view');
   assert.equal(traceView.classList.contains('hidden'), false);
+  const traceLoading = env.get('traceability-loading');
+  assert.equal(traceLoading.hidden, true);
+  assert.equal(traceLoading.classList.contains('hidden'), true);
+  const traceBody = env.get('traceability-body');
+  assert.equal(traceBody.hidden, false);
+  assert.equal(traceBody.classList.contains('hidden'), false);
   assert.equal(traceabilityCalledContext.owner, 'SHAM-MAX');
   assert.equal(traceabilityCalledContext.repository, 'GitHub-Kanban-Practice');
 
