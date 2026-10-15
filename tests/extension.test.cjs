@@ -1342,14 +1342,28 @@ test('regression: overloaded candidate or low fit candidate renders warning/dang
   await overrideBtn.click();
   await settle();
 
-  const confirmBox = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-assignment-override-confirm'));
+  // Regression check: Assert that EXACTLY ONE confirmation box appears across the entire issue card
+  const confirmBoxes = walk(cards[0]).filter(el => el.classList && el.classList.contains('relay-ai-assignment-override-confirm'));
+  assert.equal(confirmBoxes.length, 1, 'Only one override confirmation box may be rendered at a time');
+
+  const confirmBox = confirmBoxes[0];
   assert.ok(confirmBox);
   assert.match(confirmBox.textContent, /Risk Warning/);
   assert.match(confirmBox.textContent, /Candidate is overloaded \(5 open tasks vs 3 capacity\)/);
   assert.match(confirmBox.textContent, /Skill match is low \(0%\)/);
 
-  // Clicking Cancel withdraws override attempt
-  const cancelBtn = walk(confirmBox).find(el => el.textContent === 'Cancel');
+  // Even if user clicks candidate card while confirmation is open, only one confirmation box remains active
+  const candCard = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-candidate-card'));
+  if (candCard) {
+    await candCard.click();
+    await settle();
+    const boxesAfterCardClick = walk(cards[0]).filter(el => el.classList && el.classList.contains('relay-ai-assignment-override-confirm'));
+    assert.equal(boxesAfterCardClick.length, 1, 'Clicking candidate card must not produce duplicate confirmation box');
+  }
+
+  // Clicking Cancel withdraws override attempt and leaves issue unassigned
+  const currentConfirmBox = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-assignment-override-confirm'));
+  const cancelBtn = walk(currentConfirmBox).find(el => el.textContent === 'Cancel');
   assert.ok(cancelBtn);
   await cancelBtn.click();
   await settle();
@@ -1362,9 +1376,9 @@ test('regression: overloaded candidate or low fit candidate renders warning/dang
   await reopenOverrideBtn.click();
   await settle();
 
-  const reConfirmBox = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-assignment-override-confirm'));
-  assert.ok(reConfirmBox);
-  const confirmYesBtn = walk(reConfirmBox).find(el => el.textContent === 'I Understand the Risks, Assign Anyway');
+  const reConfirmBoxes = walk(cards[0]).filter(el => el.classList && el.classList.contains('relay-ai-assignment-override-confirm'));
+  assert.equal(reConfirmBoxes.length, 1);
+  const confirmYesBtn = walk(reConfirmBoxes[0]).find(el => el.textContent === 'I Understand the Risks, Assign Anyway');
   assert.ok(confirmYesBtn);
   await confirmYesBtn.click();
   await settle();

@@ -851,6 +851,53 @@
             topExplanation.className = "relay-ai-candidate-rationale";
             topExplanation.textContent = topCandidate.rationale || "Evaluated based on balanced team criteria.";
 
+            // Unified Confirmation Box Builder helper
+            function createUnifiedOverrideConfirmBox(candidate) {
+              const box = document.createElement("div");
+              box.className = "relay-ai-assignment-override-confirm";
+
+              const candOverloaded = candidate.isOverloaded || (candidate.criteria?.workloadAndEffort?.score <= 15) || (candidate.missingDataWarnings && candidate.missingDataWarnings.some(w => w.includes('capacity')));
+              const openTasks = candidate.criteria?.workloadAndEffort?.openAssignedIssues != null ? candidate.criteria.workloadAndEffort.openAssignedIssues : 5;
+              const maxTasks = candidate.criteria?.workloadAndEffort?.maxConcurrentTasks != null ? candidate.criteria.workloadAndEffort.maxConcurrentTasks : 3;
+              const skillScore = candidate.criteria?.technicalSkills?.score != null ? candidate.criteria.technicalSkills.score : 0;
+
+              const overloadMsg = candOverloaded ? `Candidate is overloaded (${openTasks} open tasks vs ${maxTasks} capacity).` : '';
+              const skillMsg = skillScore < 40 ? `Skill match is low (${skillScore}%).` : '';
+
+              const riskWarning = document.createElement("p");
+              riskWarning.textContent = `⚠ Risk Warning: ${overloadMsg} ${skillMsg} Deliberate override may cause delivery delays or quality issues.`;
+
+              const btnRow = document.createElement("div");
+              btnRow.className = "relay-ai-assignment-override-actions";
+
+              const cancelBtn = document.createElement("button");
+              cancelBtn.type = "button";
+              cancelBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
+              cancelBtn.textContent = "Cancel";
+              cancelBtn.addEventListener("click", (e) => {
+                if (e && e.stopPropagation) e.stopPropagation();
+                delete issue._pendingOverrideConfirm;
+                refreshCard();
+              });
+
+              const confirmOverrideBtn = document.createElement("button");
+              confirmOverrideBtn.type = "button";
+              confirmOverrideBtn.className = "relay-ai-btn relay-ai-btn-danger-outline relay-ai-btn-sm";
+              confirmOverrideBtn.textContent = "I Understand the Risks, Assign Anyway";
+              confirmOverrideBtn.addEventListener("click", (e) => {
+                if (e && e.stopPropagation) e.stopPropagation();
+                delete issue._pendingOverrideConfirm;
+                issue.assignee = candidate.githubUsername;
+                issue.assignees = [candidate.githubUsername];
+                if (typeof saveConversation === "function") saveConversation();
+                refreshCard();
+              });
+
+              btnRow.append(cancelBtn, confirmOverrideBtn);
+              box.append(riskWarning, btnRow);
+              return box;
+            }
+
             // Action row: Approve assignment button or Override Warning
             const topActionRow = document.createElement("div");
             topActionRow.className = "relay-ai-top-actions";
@@ -861,41 +908,8 @@
 
             if (isUnqualified) {
               if (issue._pendingOverrideConfirm === topCandidate.githubUsername) {
-                // Render explicit override confirmation dialog
-                const overrideBox = document.createElement("div");
-                overrideBox.className = "relay-ai-assignment-override-confirm";
-
-                const riskWarning = document.createElement("p");
-                const overloadMsg = isOverloaded ? `Candidate is overloaded (${topCandidate.criteria?.workloadAndEffort?.openAssignedIssues || 5} open tasks vs ${topCandidate.criteria?.workloadAndEffort?.maxConcurrentTasks || 3} capacity).` : '';
-                const skillMsg = topCandidate.criteria?.technicalSkills?.score < 40 ? `Skill match is low (${topCandidate.criteria?.technicalSkills?.score || 0}%).` : '';
-                riskWarning.textContent = `⚠ Risk Warning: ${overloadMsg} ${skillMsg} Deliberate override may cause delivery delays or quality issues.`;
-
-                const btnRow = document.createElement("div");
-                btnRow.className = "relay-ai-assignment-override-actions";
-
-                const cancelBtn = document.createElement("button");
-                cancelBtn.type = "button";
-                cancelBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
-                cancelBtn.textContent = "Cancel";
-                cancelBtn.addEventListener("click", () => {
-                  delete issue._pendingOverrideConfirm;
-                  refreshCard();
-                });
-
-                const confirmOverrideBtn = document.createElement("button");
-                confirmOverrideBtn.type = "button";
-                confirmOverrideBtn.className = "relay-ai-btn relay-ai-btn-danger-outline relay-ai-btn-sm";
-                confirmOverrideBtn.textContent = "I Understand the Risks, Assign Anyway";
-                confirmOverrideBtn.addEventListener("click", () => {
-                  delete issue._pendingOverrideConfirm;
-                  issue.assignee = topCandidate.githubUsername;
-                  issue.assignees = [topCandidate.githubUsername];
-                  if (typeof saveConversation === "function") saveConversation();
-                  refreshCard();
-                });
-
-                btnRow.append(cancelBtn, confirmOverrideBtn);
-                overrideBox.append(riskWarning, btnRow);
+                // Render unified override confirmation dialog in top spotlight
+                const overrideBox = createUnifiedOverrideConfirmBox(topCandidate);
                 topActionRow.append(overrideBox);
               } else {
                 const overrideBtn = document.createElement("button");
@@ -906,6 +920,7 @@
                   overrideBtn.addEventListener("click", () => {
                     issue.assignee = null;
                     issue.assignees = [];
+                    delete issue._pendingOverrideConfirm;
                     if (typeof saveConversation === "function") saveConversation();
                     refreshCard();
                   });
@@ -936,6 +951,7 @@
                   issue.assignee = topCandidate.githubUsername;
                   issue.assignees = [topCandidate.githubUsername];
                 }
+                delete issue._pendingOverrideConfirm;
                 if (typeof saveConversation === "function") saveConversation();
                 refreshCard();
               });
@@ -1045,6 +1061,7 @@
                   const candOverloaded = candidate.isOverloaded || (candidate.criteria?.workloadAndEffort?.score <= 15) || (candidate.missingDataWarnings && candidate.missingDataWarnings.some(w => w.includes('capacity')));
                   const candLowFit = candidate.overallScore < 45 || candidate.fitLevel === 'weak' || candidate.isRecommended === false;
                   if (candOverloaded || candLowFit) {
+                    // Activate override confirmation
                     issue._pendingOverrideConfirm = candidate.githubUsername;
                   } else {
                     issue.assignee = candidate.githubUsername;
@@ -1056,46 +1073,11 @@
                 refreshCard();
               });
 
-              // If this candidate card is the target of a pending override confirmation, render confirmation box
-              if (issue._pendingOverrideConfirm === candidate.githubUsername) {
-                const cardOverrideBox = document.createElement("div");
-                cardOverrideBox.className = "relay-ai-assignment-override-confirm";
-
-                const candOverloaded = candidate.isOverloaded || (candidate.criteria?.workloadAndEffort?.score <= 15);
-                const overloadMsg = candOverloaded ? `Developer is overloaded (${candidate.criteria?.workloadAndEffort?.openAssignedIssues || 0} open issues vs ${candidate.criteria?.workloadAndEffort?.maxConcurrentTasks || 3} max).` : '';
-                const skillMsg = (candidate.criteria?.technicalSkills?.score || 0) < 40 ? `Skill match is low (${candidate.criteria?.technicalSkills?.score || 0}%).` : '';
-                
-                const riskP = document.createElement("p");
-                riskP.textContent = `⚠ Risk Warning: ${overloadMsg} ${skillMsg} Deliberate override requires PM confirmation.`;
-
-                const btnRow = document.createElement("div");
-                btnRow.className = "relay-ai-assignment-override-actions";
-
-                const cancelBtn = document.createElement("button");
-                cancelBtn.type = "button";
-                cancelBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
-                cancelBtn.textContent = "Cancel";
-                cancelBtn.addEventListener("click", (e) => {
-                  e.stopPropagation();
-                  delete issue._pendingOverrideConfirm;
-                  refreshCard();
-                });
-
-                const confirmBtn = document.createElement("button");
-                confirmBtn.type = "button";
-                confirmBtn.className = "relay-ai-btn relay-ai-btn-danger-outline relay-ai-btn-sm";
-                confirmBtn.textContent = "Confirm Override";
-                confirmBtn.addEventListener("click", (e) => {
-                  e.stopPropagation();
-                  delete issue._pendingOverrideConfirm;
-                  issue.assignee = candidate.githubUsername;
-                  issue.assignees = [candidate.githubUsername];
-                  if (typeof saveConversation === "function") saveConversation();
-                  refreshCard();
-                });
-
-                btnRow.append(cancelBtn, confirmBtn);
-                cardOverrideBox.append(riskP, btnRow);
+              // Only render card confirmation box if this candidate is NOT the top candidate
+              // (because the top candidate already renders its confirmation in the spotlight above)
+              const isTop = (candidate.githubUsername === topCandidate.githubUsername);
+              if (!isTop && issue._pendingOverrideConfirm === candidate.githubUsername) {
+                const cardOverrideBox = createUnifiedOverrideConfirmBox(candidate);
                 candCard.append(cardOverrideBox);
               }
 
