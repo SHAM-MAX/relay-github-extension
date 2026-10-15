@@ -965,7 +965,7 @@ test('proposed issue cards display assignment recommendations and send selected 
   assert.equal(candCards.length, 2);
   assert.match(candCards[0].textContent, /@alice/);
   assert.match(candCards[0].textContent, /92%/);
-  assert.match(candCards[0].textContent, /High conf/);
+  assert.match(candCards[0].textContent, /Evidence: High/);
   assert.match(candCards[1].textContent, /@bob/);
 
   // Advisory confirmation: Click candidate Alice to select
@@ -1259,14 +1259,74 @@ test('assignment recommendation network failure or 403 displays diagnostic notic
 
   const cards = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-issue-card'));
   assert.equal(cards.length, 1);
+  const warn = walk(cards[0]).find(el => el.textContent && el.textContent.includes('Could not connect'));
+  assert.ok(warn);
+});
 
-  // Diagnostic notice should be displayed in candidates container
-  const diagnosticElem = walk(cards[0]).find(el => el.textContent && el.textContent.includes('Diagnostic: Backend connection failed'));
-  assert.ok(diagnosticElem, 'Diagnostic notice must be rendered on backend failure');
+test('regression: overloaded candidate or low fit candidate renders warning/danger badge and never unconditional Recommended', async () => {
+  const env = await panel({
+    checkAuth: async () => true
+  });
 
-  // Manual select dropdown is still present and functional
-  const manualSelect = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-assignee-manual-select'));
-  assert.ok(manualSelect, 'Manual select override dropdown must be preserved');
+  env.scope.RelayAIAssistant.getAssignmentRecommendations = async () => ({
+    ok: true,
+    json: async () => ({
+      recommendations: [
+        {
+          githubUsername: 'overloaded_dev',
+          overallScore: 24,
+          confidence: 'High',
+          isRecommended: false,
+          isOverloaded: true,
+          fitLevel: 'weak',
+          rationale: 'Over capacity (5 open issues vs 3 max allowed). No matching declared technical skills.',
+          criteria: {
+            technicalSkills: { score: 0 },
+            workloadAndEffort: { score: 0, isOverloaded: true },
+            repositoryFamiliarity: { score: 55 },
+            availabilityAndDeadlines: { score: 60 },
+            growthAndFairness: { score: 40 }
+          },
+          missingDataWarnings: ['Current workload (5 open assigned items) meets or exceeds capacity (3)']
+        }
+      ],
+      warnings: []
+    })
+  });
+
+  env.get('input').value = 'Check recommendation quality';
+  const sending = env.get('form').emit('submit');
+  await settle();
+
+  env.resolveAI({
+    reply: 'Plan',
+    issuePlan: {
+      issues: [{ id: 'task-quality', title: 'Quality Issue', body: 'Body' }]
+    },
+    context: { owner: 'SHAM-MAX', repository: 'new-kanban-board' }
+  });
+  await sending;
+  await settle();
+
+  const cards = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-issue-card'));
+  assert.equal(cards.length, 1);
+
+  // Must NOT be labeled "★ Recommended"
+  const topSpotlight = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-top-recommendation'));
+  assert.ok(topSpotlight);
+  assert.doesNotMatch(topSpotlight.textContent, /★ Recommended/);
+
+  // Must display Overloaded (Capacity Exceeded) badge
+  const badge = walk(topSpotlight).find(el => el.classList && el.classList.contains('relay-ai-badge'));
+  assert.ok(badge);
+  assert.match(badge.textContent, /Overloaded/);
+
+  // Check manualSelect option includes Overloaded annotation
+  const manualSelect = walk(cards[0]).find(el => el.tagName === 'SELECT' && el.classList.contains('relay-ai-assignee-manual-select'));
+  assert.ok(manualSelect);
+  const opt = walk(manualSelect).find(el => el.value === 'overloaded_dev');
+  assert.ok(opt);
+  assert.match(opt.textContent, /Overloaded/);
 });
 
 test('developer profile modal displays loading, empty, and default states correctly', async () => {

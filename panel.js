@@ -782,7 +782,8 @@
             for (const r of recommendations) {
               const opt = document.createElement("option");
               opt.value = r.githubUsername;
-              opt.textContent = `@${r.githubUsername} (${r.overallScore}% fit)`;
+              const statusTag = r.isOverloaded || (r.criteria?.workloadAndEffort?.score <= 15) ? ' - Overloaded' : (r.overallScore < 45 ? ' - Low Fit' : '');
+              opt.textContent = `@${r.githubUsername} (${r.overallScore}% fit${statusTag})`;
               if (r.githubUsername === chosen) opt.selected = true;
               manualSelect.append(opt);
             }
@@ -795,9 +796,11 @@
               return;
             }
 
-            // Check if top candidate has insufficient evidence (e.g. low confidence or missing critical evidence)
+            // Determine recommendation fitness and appropriate badge
             const topCandidate = recommendations[0];
             const isInsufficientEvidence = topCandidate.confidence === 'Low' && (topCandidate.overallScore <= 35 || (topCandidate.missingDataWarnings && topCandidate.missingDataWarnings.length >= 2));
+            const isOverloaded = topCandidate.isOverloaded || (topCandidate.criteria?.workloadAndEffort?.score <= 15) || (topCandidate.missingDataWarnings && topCandidate.missingDataWarnings.some(w => w.includes('meets or exceeds capacity')));
+            const isLowFit = topCandidate.overallScore < 45 || topCandidate.fitLevel === 'weak' || (topCandidate.isRecommended === false && !isOverloaded);
 
             // Render top recommendation spotlight
             const topSpotlight = document.createElement("div");
@@ -807,8 +810,19 @@
             topHeader.className = "relay-ai-candidate-top";
 
             const recBadge = document.createElement("span");
-            recBadge.className = isInsufficientEvidence ? "relay-ai-badge relay-ai-badge-insufficient" : "relay-ai-badge relay-ai-badge-recommended";
-            recBadge.textContent = isInsufficientEvidence ? "Insufficient Evidence" : "★ Recommended";
+            if (isInsufficientEvidence) {
+              recBadge.className = "relay-ai-badge relay-ai-badge-insufficient";
+              recBadge.textContent = "Insufficient Evidence";
+            } else if (isOverloaded) {
+              recBadge.className = "relay-ai-badge relay-ai-badge-danger";
+              recBadge.textContent = "⚠ Overloaded (Capacity Exceeded)";
+            } else if (isLowFit) {
+              recBadge.className = "relay-ai-badge relay-ai-badge-warning";
+              recBadge.textContent = "No Strong Match";
+            } else {
+              recBadge.className = "relay-ai-badge relay-ai-badge-recommended";
+              recBadge.textContent = "★ Recommended";
+            }
 
             const topUser = document.createElement("span");
             topUser.className = "relay-ai-candidate-user";
@@ -816,7 +830,8 @@
 
             const topScoreBadge = document.createElement("span");
             topScoreBadge.className = "relay-ai-candidate-score-badge";
-            topScoreBadge.textContent = `${topCandidate.overallScore}% (${topCandidate.confidence} conf)`;
+            topScoreBadge.title = `Fit Score: ${topCandidate.overallScore}%. Evidence completeness: ${topCandidate.confidence}`;
+            topScoreBadge.textContent = `${topCandidate.overallScore}% fit (Evidence: ${topCandidate.confidence})`;
 
             topHeader.append(recBadge, topUser, topScoreBadge);
 
@@ -867,14 +882,23 @@
 
               const scoreBadge = document.createElement("span");
               scoreBadge.className = "relay-ai-candidate-score-badge";
+              scoreBadge.title = `Fit Score: ${candidate.overallScore}%. Evidence completeness: ${candidate.confidence}`;
 
               const scoreText = document.createElement("span");
-              scoreText.textContent = `${candidate.overallScore}%`;
+              scoreText.textContent = `${candidate.overallScore}% fit`;
 
               const confSpan = document.createElement("span");
               confSpan.className = "relay-ai-candidate-conf";
-              confSpan.textContent = ` (${candidate.confidence} conf)`;
+              confSpan.textContent = ` (Evidence: ${candidate.confidence})`;
               scoreBadge.append(scoreText, confSpan);
+
+              if (candidate.isOverloaded || (candidate.criteria?.workloadAndEffort?.score <= 15)) {
+                const ovBadge = document.createElement("span");
+                ovBadge.className = "relay-ai-badge relay-ai-badge-danger";
+                ovBadge.style.marginLeft = "6px";
+                ovBadge.textContent = "Overloaded";
+                scoreBadge.append(ovBadge);
+              }
 
               topRow.append(userLabel, scoreBadge);
 
