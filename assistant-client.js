@@ -278,6 +278,23 @@
     });
   }
 
+  async function getTraceability(context, options = {}) {
+    const fetchImpl = options.fetchImpl || fetch;
+    const owner = encodeURIComponent(context?.owner || '');
+    const repo = encodeURIComponent(context?.repository || '');
+    const url = ENDPOINT.replace('/assistant', `/pm/traceability?owner=${owner}&repo=${repo}`);
+    const headers = { 'Accept': 'application/json', ...(options.headers || {}) };
+    const cookie = await getSessionCookie();
+    if (cookie?.value && !headers['Cookie'] && !headers['cookie']) {
+      headers['Cookie'] = `relay_pm_session=${cookie.value}`;
+    }
+    return await fetchImpl(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers
+    });
+  }
+
   const api = Object.freeze({
     send,
     connectionURL,
@@ -290,8 +307,10 @@
     getAssignmentRecommendations,
     getDeveloperProfile,
     upsertDeveloperProfile,
-    getProjectHealth
+    getProjectHealth,
+    getTraceability
   });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RelayAIAssistant = api;
 })(globalThis);
+

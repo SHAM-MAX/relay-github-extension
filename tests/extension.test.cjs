@@ -123,6 +123,10 @@ async function panel(opts = {}) {
       ok: true,
       json: async () => ({ health: null })
     })),
+    getTraceability: opts.getTraceability || (async () => ({
+      ok: true,
+      json: async () => ({ traceability: [], gaps: {}, summary: {} })
+    })),
     send: (message, context) => {
       env.calls.push({ message, context });
       return new Promise((resolve, reject) => { env.resolveAI = resolve; env.rejectAI = reject; });
@@ -130,6 +134,7 @@ async function panel(opts = {}) {
   };
   env.run('context.js'); env.run('panel.js'); await settle(); return env;
 }
+
 test('panel displays the backend reply with loading state and blocks double-send', async () => {
   const env = await panel();
   assert.equal(env.get('repository').textContent, 'SHAM-MAX/new-kanban-board');
@@ -1539,5 +1544,161 @@ test('Project Health dashboard renders overall status, critical issues, risks, a
   await settle();
   assert.equal(healthView.classList.contains('hidden'), true);
 });
+
+test('Requirements Traceability Matrix dashboard renders requirements, linked issues, PRs, verification evidence, and delivery gaps', async () => {
+  let traceabilityCalledContext = null;
+  const mockTraceabilityData = {
+    traceability: [
+      {
+        id: 'req-1',
+        reqId: 'REQ-001',
+        title: 'Authentication & Session Flow',
+        description: '## ACCEPTANCE CRITERIA\n- [x] Secure token storage',
+        status: 'approved',
+        acceptanceCriteria: [{ text: 'Secure token storage', completed: true }],
+        deliveryStatus: {
+          status: 'verified_complete',
+          label: 'Verified Complete',
+          badgeClass: 'verified',
+          isVerified: true
+        },
+        workItems: [
+          {
+            id: 'wi-1',
+            itemId: 'TSK-001',
+            title: 'Build JWT authenticator',
+            githubIssueNumber: 42,
+            githubIssueUrl: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/issues/42',
+            pullRequests: [
+              {
+                number: 77,
+                title: 'Implement auth token verification',
+                html_url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/pull/77',
+                evidence: {
+                  verificationState: 'verified',
+                  verificationLabel: 'CI / Test verification passed'
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    gaps: {
+      requirementsWithoutIssues: [],
+      issuesWithoutPrs: [
+        {
+          reqId: 'REQ-002',
+          issueNumber: 99,
+          title: 'Unlinked bug issue',
+          issueUrl: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/issues/99',
+          reason: 'Issue #99 has no linked Pull Requests.'
+        }
+      ],
+      prsWithoutRequirements: [
+        {
+          prNumber: 88,
+          title: 'Independent documentation update',
+          html_url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/pull/88',
+          reason: 'PR #88 does not mention any issue or requirement in title/body.'
+        }
+      ],
+      totalGaps: 2
+    },
+    summary: {
+      totalRequirements: 1,
+      verifiedCount: 1,
+      deliveredUnverifiedCount: 0,
+      inProgressCount: 0,
+      totalGaps: 2,
+      verificationRate: 100
+    }
+  };
+
+  const env = await panel({
+    checkAuth: async () => true,
+    url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice',
+    getTraceability: async (ctx) => {
+      traceabilityCalledContext = ctx;
+      return {
+        ok: true,
+        json: async () => mockTraceabilityData
+      };
+    }
+  });
+
+  env.window.postMessage({
+    type: 'relay-ai-host-context',
+    context: {
+      owner: 'SHAM-MAX',
+      repository: 'GitHub-Kanban-Practice',
+      pageType: 'repository'
+    }
+  }, '*');
+  await settle();
+
+  // Open gear menu and click Traceability Matrix
+  await env.get('gear').click();
+  await settle();
+
+  const gearTraceabilityBtn = env.get('gear-traceability');
+  assert.ok(gearTraceabilityBtn, 'Traceability Matrix button must exist in settings gear menu');
+
+  await gearTraceabilityBtn.click();
+  await settle();
+  await settle();
+  await settle();
+
+
+  // Verify traceability view opened
+  const traceView = env.get('traceability-view');
+  assert.equal(traceView.classList.contains('hidden'), false);
+  assert.equal(traceabilityCalledContext.owner, 'SHAM-MAX');
+  assert.equal(traceabilityCalledContext.repository, 'GitHub-Kanban-Practice');
+
+  // Verify overall status badge
+  const statusBadge = walk(env.document).find(el => el.classList && el.classList.contains('relay-ai-traceability-status-badge'));
+  assert.ok(statusBadge);
+  assert.equal(statusBadge.textContent, '100% VERIFIED');
+
+  // Verify metric items rendered
+  const metricItems = walk(env.document).filter(el => el.classList && el.classList.contains('relay-ai-metric-item'));
+  assert.ok(metricItems.length >= 5);
+
+  // Verify requirement card and ID
+  const reqCard = walk(env.document).find(el => el.classList && el.classList.contains('relay-ai-req-card'));
+  assert.ok(reqCard);
+  const reqId = walk(reqCard).find(el => el.classList && el.classList.contains('relay-ai-req-id'));
+  assert.equal(reqId.textContent, 'REQ-001');
+
+  // Verify acceptance criteria rendered
+  const critItem = walk(reqCard).find(el => el.classList && el.classList.contains('relay-ai-criteria-item'));
+  assert.ok(critItem);
+  assert.ok(critItem.textContent.includes('Secure token storage'));
+
+  // Verify underlying GitHub issue link
+  const ghLinks = walk(reqCard).filter(el => el.classList && el.classList.contains('relay-ai-gh-link'));
+  assert.ok(ghLinks.length >= 2);
+  assert.equal(ghLinks[0].href, 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/issues/42');
+  assert.equal(ghLinks[1].href, 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/pull/77');
+
+  // Verify test verification evidence badge
+  const evBadge = walk(reqCard).find(el => el.classList && el.classList.contains('relay-ai-evidence-badge'));
+  assert.ok(evBadge);
+  assert.equal(evBadge.textContent, 'CI / Test verification passed');
+  assert.ok(evBadge.classList.contains('verified'));
+
+  // Verify delivery gaps rendered
+  const gapCards = walk(env.document).filter(el => el.classList && el.classList.contains('relay-ai-gap-card'));
+  assert.equal(gapCards.length, 2);
+
+  // Verify back button closes view
+  const backBtn = env.get('back-traceability');
+  assert.ok(backBtn);
+  await backBtn.click();
+  await settle();
+  assert.equal(traceView.classList.contains('hidden'), true);
+});
+
 
 

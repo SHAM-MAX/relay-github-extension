@@ -244,3 +244,24 @@ test('getProjectHealth requests health endpoint with context and credentials', a
   assert.equal(data.health.overallStatus, 'healthy');
 });
 
+test('getTraceability requests traceability endpoint with context and credentials', async () => {
+  let reqUrl = null;
+  let reqOptions = null;
+  const mockFetch = async (url, opts) => {
+    reqUrl = url;
+    reqOptions = opts;
+    return response(200, { traceability: [{ req_id: 'REQ-001', title: 'Test Req' }], gaps: { totalGaps: 0 }, summary: { totalRequirements: 1 } });
+  };
+
+  const context = { owner: 'SHAM-MAX', repository: 'GitHub-Kanban-Practice' };
+  const res = await client.getTraceability(context, { fetchImpl: mockFetch });
+
+  assert.equal(reqUrl, 'https://relay-standalone-backend.onrender.com/api/pm/traceability?owner=SHAM-MAX&repo=GitHub-Kanban-Practice');
+  assert.equal(reqOptions.method, 'GET');
+  assert.equal(reqOptions.credentials, 'include');
+  const data = await res.json();
+  assert.equal(data.traceability[0].req_id, 'REQ-001');
+  assert.equal(data.summary.totalRequirements, 1);
+});
+
+

@@ -61,6 +61,11 @@
     "back-health",
     "health-loading",
     "health-body",
+    "gear-traceability",
+    "traceability-view",
+    "back-traceability",
+    "traceability-loading",
+    "traceability-body",
     "preferences-view",
     "back-prefs",
     "pref-clear-current",
@@ -68,6 +73,7 @@
     "about-view",
     "back-about"
   ].map(name => [name, $(name)]));
+
 
 
   /* =========================================================
@@ -2588,13 +2594,24 @@
     if (ui["gear"]) ui["gear"].classList.remove("active");
     
     // Hide all subviews first
-    ["history-view", "health-view", "preferences-view", "about-view"].forEach(id => {
+    ["history-view", "health-view", "traceability-view", "preferences-view", "about-view"].forEach(id => {
       if (ui[id]) ui[id].classList.add("hidden");
     });
     
     if (viewElement) {
       viewElement.classList.remove("hidden");
     }
+  }
+
+  // Traceability Matrix View
+  if (ui["gear-traceability"]) {
+    ui["gear-traceability"].addEventListener("click", async () => {
+      openView(ui["traceability-view"]);
+      await loadTraceability();
+    });
+  }
+  if (ui["back-traceability"]) {
+    ui["back-traceability"].addEventListener("click", () => openView(null));
   }
 
   // Project Health Intelligence View
@@ -2607,6 +2624,7 @@
   if (ui["back-health"]) {
     ui["back-health"].addEventListener("click", () => openView(null));
   }
+
 
   // History View
   if (ui["gear-history"]) {
@@ -3095,6 +3113,342 @@
       ui["health-loading"].textContent = `Health check request failed: ${err.message || 'Network error'}`;
     }
   }
+
+  // Traceability Matrix fetch and render
+  async function loadTraceability() {
+    if (!ui["traceability-loading"] || !ui["traceability-body"]) return;
+
+    ui["traceability-loading"].classList.remove("hidden");
+    ui["traceability-loading"].textContent = "Building requirements traceability matrix…";
+    ui["traceability-body"].classList.add("hidden");
+    ui["traceability-body"].replaceChildren();
+
+    const effectiveContext = currentContext;
+    if (!effectiveContext?.owner || !effectiveContext?.repository) {
+      ui["traceability-loading"].textContent = "Please select or navigate to a GitHub repository to inspect traceability.";
+      return;
+    }
+
+    if (!RelayAIAssistant?.getTraceability) {
+      ui["traceability-loading"].textContent = "Traceability service client is unavailable.";
+      return;
+    }
+
+    try {
+      const res = await RelayAIAssistant.getTraceability(effectiveContext);
+      let data = null;
+      try {
+        data = await res.json();
+      } catch (_) {}
+
+      if (!res.ok) {
+        ui["traceability-loading"].textContent = data?.error || `Unable to load traceability matrix (HTTP ${res.status}).`;
+        return;
+      }
+
+      ui["traceability-loading"].classList.add("hidden");
+      ui["traceability-body"].classList.remove("hidden");
+
+      const reqs = data.traceability || [];
+      const gaps = data.gaps || {};
+      const summary = data.summary || {};
+
+      const container = document.createElement("div");
+      container.className = "relay-ai-traceability-container";
+
+      // 1. Overall Traceability Summary Banner
+      const banner = document.createElement("div");
+      banner.className = "relay-ai-traceability-banner";
+
+      const bannerTop = document.createElement("div");
+      bannerTop.className = "relay-ai-traceability-banner-top";
+
+      const badge = document.createElement("span");
+      const isHealthyVerification = (summary.verificationRate || 0) >= 70;
+      badge.className = `relay-ai-traceability-status-badge ${isHealthyVerification ? 'verified' : summary.totalGaps > 0 ? 'gap' : 'in_progress'}`;
+      badge.textContent = `${summary.verificationRate || 0}% VERIFIED`;
+
+      const repoSpan = document.createElement("span");
+      repoSpan.className = "relay-ai-health-repo-label";
+      repoSpan.textContent = `${effectiveContext.owner}/${effectiveContext.repository}`;
+      bannerTop.append(badge, repoSpan);
+
+      const bannerSummary = document.createElement("div");
+      bannerSummary.className = "relay-ai-traceability-summary-metrics";
+
+      const metrics = [
+        { count: summary.totalRequirements || 0, label: "Requirements", cls: "" },
+        { count: summary.verifiedCount || 0, label: "Verified", cls: "text-success" },
+        { count: summary.deliveredUnverifiedCount || 0, label: "Unverified", cls: "text-warning" },
+        { count: summary.inProgressCount || 0, label: "In Progress", cls: "" },
+        { count: summary.totalGaps || 0, label: "Delivery Gaps", cls: summary.totalGaps > 0 ? "text-danger" : "" }
+      ];
+
+      for (const m of metrics) {
+        const item = document.createElement("div");
+        item.className = `relay-ai-metric-item ${m.cls}`.trim();
+        const strong = document.createElement("strong");
+        strong.textContent = String(m.count);
+        const labelSpan = document.createElement("span");
+        labelSpan.textContent = " " + m.label;
+        item.append(strong, labelSpan);
+        bannerSummary.append(item);
+      }
+
+      banner.append(bannerTop, bannerSummary);
+      container.append(banner);
+
+      // 2. Delivery Gaps Section (if any gaps exist)
+      if (summary.totalGaps > 0) {
+        const gapSec = document.createElement("div");
+        gapSec.className = "relay-ai-traceability-section";
+
+        const gTitle = document.createElement("h3");
+        gTitle.className = "relay-ai-traceability-section-title";
+        gTitle.textContent = `Delivery Gaps (${summary.totalGaps})`;
+        gapSec.append(gTitle);
+
+        const gList = document.createElement("div");
+        gList.className = "relay-ai-health-actions-list";
+
+        // Requirements without issues
+        if (Array.isArray(gaps.requirementsWithoutIssues)) {
+          for (const gap of gaps.requirementsWithoutIssues) {
+            const card = document.createElement("div");
+            card.className = "relay-ai-gap-card";
+            const gCardTitle = document.createElement("div");
+            gCardTitle.className = "relay-ai-gap-title";
+            gCardTitle.textContent = `Requirement Missing Issue: ${gap.reqId || ''} ${gap.title}`;
+            const gCardDesc = document.createElement("div");
+            gCardDesc.className = "relay-ai-gap-desc";
+            gCardDesc.textContent = gap.reason;
+            card.append(gCardTitle, gCardDesc);
+            gList.append(card);
+          }
+        }
+
+        // Issues without PRs
+        if (Array.isArray(gaps.issuesWithoutPrs)) {
+          for (const gap of gaps.issuesWithoutPrs) {
+            const card = document.createElement("div");
+            card.className = "relay-ai-gap-card";
+            const gCardTitle = document.createElement("div");
+            gCardTitle.className = "relay-ai-gap-title";
+            gCardTitle.textContent = `Issue Missing PR: #${gap.issueNumber} - ${gap.title}`;
+            const gCardDesc = document.createElement("div");
+            gCardDesc.className = "relay-ai-gap-desc";
+            gCardDesc.textContent = gap.reason;
+            if (gap.issueUrl) {
+              const link = document.createElement("a");
+              link.className = "relay-ai-gh-link";
+              link.href = gap.issueUrl;
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+              link.textContent = `Open Issue #${gap.issueNumber} ↗`;
+              card.append(gCardTitle, gCardDesc, link);
+            } else {
+              card.append(gCardTitle, gCardDesc);
+            }
+            gList.append(card);
+          }
+        }
+
+        // PRs without Requirements
+        if (Array.isArray(gaps.prsWithoutRequirements)) {
+          for (const gap of gaps.prsWithoutRequirements) {
+            const card = document.createElement("div");
+            card.className = "relay-ai-gap-card";
+            const gCardTitle = document.createElement("div");
+            gCardTitle.className = "relay-ai-gap-title";
+            gCardTitle.textContent = `Unlinked PR: #${gap.prNumber} - ${gap.title}`;
+            const gCardDesc = document.createElement("div");
+            gCardDesc.className = "relay-ai-gap-desc";
+            gCardDesc.textContent = gap.reason;
+            if (gap.html_url) {
+              const link = document.createElement("a");
+              link.className = "relay-ai-gh-link";
+              link.href = gap.html_url;
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+              link.textContent = `Open PR #${gap.prNumber} ↗`;
+              card.append(gCardTitle, gCardDesc, link);
+            } else {
+              card.append(gCardTitle, gCardDesc);
+            }
+            gList.append(card);
+          }
+        }
+
+        gapSec.append(gList);
+        container.append(gapSec);
+      }
+
+      // 3. Traceability Matrix Flow Cards (Requirements -> Tasks/Issues -> PRs -> Evidence)
+      const matrixSec = document.createElement("div");
+      matrixSec.className = "relay-ai-traceability-section";
+
+      const mTitle = document.createElement("h3");
+      mTitle.className = "relay-ai-traceability-section-title";
+      mTitle.textContent = "Requirements-to-Delivery Matrix";
+      matrixSec.append(mTitle);
+
+      if (reqs.length === 0) {
+        const emptyNotice = document.createElement("p");
+        emptyNotice.className = "relay-ai-about-desc";
+        emptyNotice.textContent = "No requirements registered yet. Propose issues with Relay to begin tracking traceability.";
+        matrixSec.append(emptyNotice);
+      } else {
+        const mList = document.createElement("div");
+        mList.className = "relay-ai-matrix-list";
+
+        for (const req of reqs) {
+          const reqCard = document.createElement("div");
+          reqCard.className = "relay-ai-req-card";
+
+          // Requirement Header
+          const rHeader = document.createElement("div");
+          rHeader.className = "relay-ai-req-header";
+
+          const titleGrp = document.createElement("div");
+          titleGrp.className = "relay-ai-req-title-group";
+
+          const rIdSpan = document.createElement("span");
+          rIdSpan.className = "relay-ai-req-id";
+          rIdSpan.textContent = req.reqId || 'REQ';
+
+          const rTitle = document.createElement("strong");
+          rTitle.className = "relay-ai-req-title";
+          rTitle.textContent = req.title;
+
+          titleGrp.append(rIdSpan, rTitle);
+
+          const rBadge = document.createElement("span");
+          const badgeCls = req.deliveryStatus?.badgeClass || 'in_progress';
+          rBadge.className = `relay-ai-traceability-status-badge ${badgeCls}`;
+          rBadge.textContent = req.deliveryStatus?.label || 'In Progress';
+
+          rHeader.append(titleGrp, rBadge);
+          reqCard.append(rHeader);
+
+          // Acceptance Criteria (if available)
+          if (Array.isArray(req.acceptanceCriteria) && req.acceptanceCriteria.length > 0) {
+            const critBox = document.createElement("div");
+            critBox.className = "relay-ai-criteria-box";
+
+            const critTitle = document.createElement("div");
+            critTitle.className = "relay-ai-criteria-title";
+            critTitle.textContent = "Acceptance Criteria";
+            critBox.append(critTitle);
+
+            for (const crit of req.acceptanceCriteria) {
+              const item = document.createElement("div");
+              item.className = "relay-ai-criteria-item";
+              item.textContent = `${crit.completed ? '☑' : '☐'} ${crit.text}`;
+              critBox.append(item);
+            }
+            reqCard.append(critBox);
+          }
+
+          // Work Items / Tasks Flow Chain
+          const workItems = req.workItems || [];
+          if (workItems.length > 0) {
+            const chain = document.createElement("div");
+            chain.className = "relay-ai-flow-chain";
+
+            for (const item of workItems) {
+              const node = document.createElement("div");
+              node.className = "relay-ai-chain-node";
+
+              const nHeader = document.createElement("div");
+              nHeader.className = "relay-ai-chain-node-header";
+
+              const leftGrp = document.createElement("div");
+              leftGrp.style.display = "flex";
+              leftGrp.style.alignItems = "center";
+              leftGrp.style.gap = "6px";
+
+              const itemIdSpan = document.createElement("span");
+              itemIdSpan.className = "relay-ai-chain-item-id";
+              itemIdSpan.textContent = item.itemId || item.type || 'TASK';
+
+              const itemTitle = document.createElement("span");
+              itemTitle.className = "relay-ai-chain-title";
+              itemTitle.textContent = item.title;
+
+              leftGrp.append(itemIdSpan, itemTitle);
+              nHeader.append(leftGrp);
+
+              // Issue Link (if published)
+              if (item.githubIssueNumber) {
+                const issueLink = document.createElement("a");
+                issueLink.className = "relay-ai-gh-link";
+                issueLink.href = item.githubIssueUrl || `https://github.com/${effectiveContext.owner}/${effectiveContext.repository}/issues/${item.githubIssueNumber}`;
+                issueLink.target = "_blank";
+                issueLink.rel = "noopener noreferrer";
+                issueLink.textContent = `Issue #${item.githubIssueNumber} ↗`;
+                nHeader.append(issueLink);
+              } else {
+                const draftSpan = document.createElement("span");
+                draftSpan.className = "relay-ai-evidence-badge unverified";
+                draftSpan.textContent = "Not Published";
+                nHeader.append(draftSpan);
+              }
+
+              node.append(nHeader);
+
+              // Linked Pull Requests & Verification Evidence
+              const prs = item.pullRequests || [];
+              if (prs.length > 0) {
+                const prContainer = document.createElement("div");
+                prContainer.style.marginTop = "6px";
+                prContainer.style.display = "flex";
+                prContainer.style.flexDirection = "column";
+                prContainer.style.gap = "4px";
+
+                for (const pr of prs) {
+                  const prRow = document.createElement("div");
+                  prRow.style.display = "flex";
+                  prRow.style.alignItems = "center";
+                  prRow.style.justifyContent = "space-between";
+                  prRow.style.gap = "6px";
+
+                  const prLink = document.createElement("a");
+                  prLink.className = "relay-ai-gh-link";
+                  prLink.href = pr.html_url;
+                  prLink.target = "_blank";
+                  prLink.rel = "noopener noreferrer";
+                  prLink.textContent = `PR #${pr.number}: ${pr.title}`;
+
+                  const evBadge = document.createElement("span");
+                  const evState = pr.evidence?.verificationState || 'unverified';
+                  evBadge.className = `relay-ai-evidence-badge ${evState}`;
+                  evBadge.textContent = pr.evidence?.verificationLabel || 'Unverified';
+
+                  prRow.append(prLink, evBadge);
+                  prContainer.append(prRow);
+                }
+                node.append(prContainer);
+              }
+
+              chain.append(node);
+            }
+            reqCard.append(chain);
+          }
+
+          mList.append(reqCard);
+        }
+        matrixSec.append(mList);
+      }
+
+      container.append(matrixSec);
+      ui["traceability-body"].append(container);
+
+    } catch (err) {
+      ui["traceability-loading"].classList.remove("hidden");
+      ui["traceability-loading"].textContent = `Traceability request failed: ${err.message || 'Network error'}`;
+    }
+  }
+
 
   // About View
   if (ui["gear-about"]) {

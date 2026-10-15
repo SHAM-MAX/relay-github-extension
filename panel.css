@@ -1495,3 +1495,280 @@ textarea:focus-visible {
   border: 1px solid rgba(210, 153, 34, 0.4);
 }
 
+/* =========================================================
+   TRACEABILITY MATRIX DASHBOARD STYLES
+   ========================================================= */
+
+.relay-ai-traceability-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 24px;
+}
+
+.relay-ai-traceability-banner {
+  background: linear-gradient(145deg, rgba(14, 27, 49, 0.95), rgba(9, 18, 33, 0.95));
+  border: 1px solid rgba(126, 168, 222, 0.25);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.relay-ai-traceability-banner-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.relay-ai-traceability-status-badge {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.relay-ai-traceability-status-badge.verified {
+  background: rgba(46, 160, 67, 0.25);
+  color: #3fb950;
+  border: 1px solid rgba(46, 160, 67, 0.5);
+}
+
+.relay-ai-traceability-status-badge.unverified {
+  background: rgba(210, 153, 34, 0.2);
+  color: #e3b341;
+  border: 1px solid rgba(210, 153, 34, 0.4);
+}
+
+.relay-ai-traceability-status-badge.gap {
+  background: rgba(248, 81, 73, 0.2);
+  color: #ff7b72;
+  border: 1px solid rgba(248, 81, 73, 0.4);
+}
+
+.relay-ai-traceability-status-badge.in_progress {
+  background: rgba(56, 139, 253, 0.2);
+  color: #58a6ff;
+  border: 1px solid rgba(56, 139, 253, 0.4);
+}
+
+.relay-ai-traceability-summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.relay-ai-traceability-section {
+  background: rgba(11, 22, 40, 0.65);
+  border: 1px solid rgba(126, 168, 222, 0.18);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.relay-ai-traceability-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #d2e3fc;
+  letter-spacing: 0.3px;
+  margin: 0 0 10px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.relay-ai-matrix-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.relay-ai-req-card {
+  background: rgba(8, 16, 29, 0.85);
+  border: 1px solid rgba(126, 168, 222, 0.22);
+  border-radius: 8px;
+  padding: 12px;
+  transition: border-color 0.15s ease;
+}
+
+.relay-ai-req-card:hover {
+  border-color: rgba(140, 190, 255, 0.4);
+}
+
+.relay-ai-req-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.relay-ai-req-title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.relay-ai-req-id {
+  font-size: 11px;
+  font-weight: 800;
+  color: #58a6ff;
+  background: rgba(56, 139, 253, 0.15);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.relay-ai-req-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #edf4ff;
+}
+
+.relay-ai-req-body {
+  font-size: 11.5px;
+  color: #9cb3d8;
+  margin-bottom: 10px;
+  line-height: 1.45;
+}
+
+.relay-ai-criteria-box {
+  background: rgba(19, 32, 54, 0.5);
+  border-left: 3px solid #388bfd;
+  padding: 6px 10px;
+  border-radius: 0 6px 6px 0;
+  margin-bottom: 10px;
+}
+
+.relay-ai-criteria-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #a4c2ee;
+  margin-bottom: 4px;
+}
+
+.relay-ai-criteria-item {
+  font-size: 11px;
+  color: #c9d8ee;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.relay-ai-flow-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-left: 6px;
+  border-left: 2px dashed rgba(126, 168, 222, 0.25);
+}
+
+.relay-ai-chain-node {
+  background: rgba(14, 25, 45, 0.7);
+  border: 1px solid rgba(126, 168, 222, 0.18);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.relay-ai-chain-node-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.relay-ai-chain-item-id {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #a4c2ee;
+}
+
+.relay-ai-chain-title {
+  font-size: 11.5px;
+  color: #edf4ff;
+  font-weight: 500;
+}
+
+.relay-ai-gh-link {
+  font-size: 11px;
+  font-weight: 600;
+  color: #58a6ff;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.relay-ai-gh-link:hover {
+  text-decoration: underline;
+  color: #79c0ff;
+}
+
+.relay-ai-evidence-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.relay-ai-evidence-badge.verified {
+  background: rgba(46, 160, 67, 0.2);
+  color: #3fb950;
+  border: 1px solid rgba(46, 160, 67, 0.4);
+}
+
+.relay-ai-evidence-badge.unverified {
+  background: rgba(210, 153, 34, 0.2);
+  color: #e3b341;
+  border: 1px solid rgba(210, 153, 34, 0.4);
+}
+
+.relay-ai-evidence-badge.failed {
+  background: rgba(248, 81, 73, 0.2);
+  color: #ff7b72;
+  border: 1px solid rgba(248, 81, 73, 0.4);
+}
+
+.relay-ai-evidence-badge.pending {
+  background: rgba(56, 139, 253, 0.2);
+  color: #58a6ff;
+  border: 1px solid rgba(56, 139, 253, 0.4);
+}
+
+.relay-ai-gap-card {
+  background: rgba(25, 14, 18, 0.7);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.relay-ai-gap-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #ff7b72;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.relay-ai-gap-desc {
+  font-size: 11px;
+  color: #e6edf3;
+  line-height: 1.4;
+}
+
+
