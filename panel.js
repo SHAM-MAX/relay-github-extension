@@ -66,6 +66,11 @@
     "back-traceability",
     "traceability-loading",
     "traceability-body",
+    "gear-reports",
+    "reports-view",
+    "back-reports",
+    "reports-loading",
+    "reports-body",
     "preferences-view",
     "back-prefs",
     "pref-clear-current",
@@ -2594,7 +2599,7 @@
     if (ui["gear"]) ui["gear"].classList.remove("active");
     
     // Hide all subviews first
-    ["history-view", "health-view", "traceability-view", "preferences-view", "about-view"].forEach(id => {
+    ["history-view", "health-view", "traceability-view", "reports-view", "preferences-view", "about-view"].forEach(id => {
       if (ui[id]) ui[id].classList.add("hidden");
     });
     
@@ -2612,6 +2617,17 @@
   }
   if (ui["back-traceability"]) {
     ui["back-traceability"].addEventListener("click", () => openView(null));
+  }
+
+  // PM Reports & Delivery Forecasting View
+  if (ui["gear-reports"]) {
+    ui["gear-reports"].addEventListener("click", async () => {
+      openView(ui["reports-view"]);
+      await loadPmReports();
+    });
+  }
+  if (ui["back-reports"]) {
+    ui["back-reports"].addEventListener("click", () => openView(null));
   }
 
   // Project Health Intelligence View
@@ -3449,7 +3465,305 @@
 
     } catch (err) {
       ui["traceability-loading"].classList.remove("hidden");
+      ui["traceability-loading"].hidden = false;
       ui["traceability-loading"].textContent = `Traceability request failed: ${err.message || 'Network error'}`;
+    }
+  }
+
+  // PM Reports & Delivery Forecasting fetch and render
+  async function loadPmReports() {
+    if (!ui["reports-loading"] || !ui["reports-body"]) return;
+
+    ui["reports-loading"].classList.remove("hidden");
+    ui["reports-loading"].hidden = false;
+    ui["reports-loading"].textContent = "Generating PM reports and delivery forecast…";
+    ui["reports-body"].classList.add("hidden");
+    ui["reports-body"].hidden = true;
+    ui["reports-body"].replaceChildren();
+
+    const effectiveContext = currentContext;
+    if (!effectiveContext?.owner || !effectiveContext?.repository) {
+      ui["reports-loading"].textContent = "Please select or navigate to a GitHub repository to generate PM reports.";
+      return;
+    }
+
+    if (!RelayAIAssistant?.getPmReports) {
+      ui["reports-loading"].textContent = "PM Reports service client is unavailable.";
+      return;
+    }
+
+    try {
+      const res = await RelayAIAssistant.getPmReports(effectiveContext);
+      let data = null;
+      try {
+        data = await res.json();
+      } catch (_) {}
+
+      if (!res.ok) {
+        ui["reports-loading"].textContent = data?.error || `Unable to load PM reports (HTTP ${res.status}).`;
+        return;
+      }
+
+      ui["reports-loading"].classList.add("hidden");
+      ui["reports-loading"].hidden = true;
+      ui["reports-body"].classList.remove("hidden");
+      ui["reports-body"].hidden = false;
+
+      const reports = data.reports || {};
+      const statusReport = reports.projectStatusReport || {};
+      const milestoneReport = reports.milestoneReport || {};
+      const deliveryForecast = reports.deliveryForecast || {};
+      const teamWorkload = reports.teamWorkload || {};
+      const stakeholderUpdate = reports.stakeholderUpdate || {};
+
+      const container = document.createElement("div");
+      container.className = "relay-ai-reports-container";
+
+      // 1. Project Status Report Section
+      const statusSec = document.createElement("div");
+      statusSec.className = "relay-ai-report-section";
+
+      const statusHeader = document.createElement("div");
+      statusHeader.className = "relay-ai-report-header";
+      const statusTitle = document.createElement("h3");
+      statusTitle.textContent = "1. Project Status Report";
+      const statusBadge = document.createElement("span");
+      const healthCls = statusReport.overallStatus === 'healthy' ? 'verified' : statusReport.overallStatus === 'at_risk' ? 'gap' : 'in_progress';
+      statusBadge.className = `relay-ai-traceability-status-badge ${healthCls}`;
+      statusBadge.textContent = (statusReport.overallStatus || 'active').replace('_', ' ').toUpperCase();
+      statusHeader.append(statusTitle, statusBadge);
+
+      const statusMetrics = document.createElement("div");
+      statusMetrics.className = "relay-ai-traceability-summary-metrics";
+      const metricsList = [
+        { count: statusReport.metrics?.totalIssues || 0, label: "Total Issues" },
+        { count: statusReport.metrics?.openIssues || 0, label: "Open Issues" },
+        { count: statusReport.metrics?.closedIssues || 0, label: "Closed Issues", cls: "text-success" },
+        { count: `${statusReport.completionRate || 0}%`, label: "Completion Rate" },
+        { count: statusReport.metrics?.overdueCount || 0, label: "Overdue", cls: statusReport.metrics?.overdueCount > 0 ? "text-danger" : "" },
+        { count: statusReport.metrics?.stalledCount || 0, label: "Stalled", cls: statusReport.metrics?.stalledCount > 0 ? "text-warning" : "" },
+        { count: statusReport.metrics?.totalGaps || 0, label: "Delivery Gaps", cls: statusReport.metrics?.totalGaps > 0 ? "text-danger" : "" }
+      ];
+
+      for (const m of metricsList) {
+        const item = document.createElement("div");
+        item.className = `relay-ai-metric-item ${m.cls || ''}`.trim();
+        const strong = document.createElement("strong");
+        strong.textContent = String(m.count);
+        const label = document.createElement("span");
+        label.textContent = " " + m.label;
+        item.append(strong, label);
+        statusMetrics.append(item);
+      }
+      statusSec.append(statusHeader, statusMetrics);
+
+      // Overdue issues list if any
+      if (Array.isArray(statusReport.overdueIssues) && statusReport.overdueIssues.length > 0) {
+        const odList = document.createElement("div");
+        odList.className = "relay-ai-report-sublist";
+        for (const od of statusReport.overdueIssues) {
+          const odCard = document.createElement("div");
+          odCard.className = "relay-ai-gap-card";
+          const title = document.createElement("strong");
+          title.className = "relay-ai-gap-title";
+          title.textContent = `Overdue #${od.number}: ${od.title}`;
+          const exp = document.createElement("p");
+          exp.className = "relay-ai-gap-desc";
+          exp.textContent = od.explanation;
+          odCard.append(title, exp);
+          if (od.url) {
+            const link = document.createElement("a");
+            link.className = "relay-ai-gh-link";
+            link.href = od.url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.textContent = `View Issue #${od.number} ↗`;
+            odCard.append(link);
+          }
+          odList.append(odCard);
+        }
+        statusSec.append(odList);
+      }
+      container.append(statusSec);
+
+      // 2. Sprint & Milestone Report Section
+      const msSec = document.createElement("div");
+      msSec.className = "relay-ai-report-section";
+      const msTitle = document.createElement("h3");
+      msTitle.className = "relay-ai-traceability-section-title";
+      msTitle.textContent = `2. Sprint & Milestone Progress (${milestoneReport.totalMilestones || 0})`;
+      msSec.append(msTitle);
+
+      const msList = milestoneReport.milestones || [];
+      if (msList.length === 0) {
+        const emptyMs = document.createElement("p");
+        emptyMs.className = "relay-ai-about-desc";
+        emptyMs.textContent = "No milestones registered in Relay or GitHub for this repository.";
+        msSec.append(emptyMs);
+      } else {
+        const mCards = document.createElement("div");
+        mCards.className = "relay-ai-matrix-list";
+        for (const ms of msList) {
+          const card = document.createElement("div");
+          card.className = "relay-ai-req-card";
+          const cHeader = document.createElement("div");
+          cHeader.className = "relay-ai-req-header";
+          const titleGrp = document.createElement("div");
+          titleGrp.className = "relay-ai-req-title-group";
+          const idSpan = document.createElement("span");
+          idSpan.className = "relay-ai-req-id";
+          idSpan.textContent = ms.milestoneId || 'MS';
+          const tText = document.createElement("strong");
+          tText.className = "relay-ai-req-title";
+          tText.textContent = ms.title;
+          titleGrp.append(idSpan, tText);
+
+          const mBadge = document.createElement("span");
+          const mBadgeCls = ms.healthStatus === 'on_track' ? 'verified' : 'gap';
+          mBadge.className = `relay-ai-traceability-status-badge ${mBadgeCls}`;
+          mBadge.textContent = ms.healthStatus.replace('_', ' ').toUpperCase();
+          cHeader.append(titleGrp, mBadge);
+
+          const desc = document.createElement("p");
+          desc.className = "relay-ai-req-body";
+          desc.textContent = `${ms.completedIssues}/${ms.totalIssues} issues closed (${ms.completionRate}% complete). Target: ${ms.targetDate || 'None set'}`;
+
+          card.append(cHeader, desc);
+          mCards.append(card);
+        }
+        msSec.append(mCards);
+      }
+      container.append(msSec);
+
+      // 3. Delivery Forecast Section
+      const fcSec = document.createElement("div");
+      fcSec.className = "relay-ai-report-section";
+      const fcTitle = document.createElement("h3");
+      fcTitle.className = "relay-ai-traceability-section-title";
+      fcTitle.textContent = "3. Delivery Forecast (Critical Path)";
+
+      const fcCard = document.createElement("div");
+      fcCard.className = "relay-ai-forecast-card";
+
+      const fcHeader = document.createElement("div");
+      fcHeader.className = "relay-ai-forecast-header";
+      const estDate = document.createElement("strong");
+      estDate.className = "relay-ai-forecast-date";
+      estDate.textContent = deliveryForecast.estimatedCompletionDate 
+        ? `Target Completion: ${deliveryForecast.estimatedCompletionDate}` 
+        : "Estimated Completion: Pending Schedule Inputs";
+
+      const confBadge = document.createElement("span");
+      const confCls = deliveryForecast.confidence === 'high' ? 'verified' : deliveryForecast.confidence === 'medium' ? 'in_progress' : 'gap';
+      confBadge.className = `relay-ai-traceability-status-badge ${confCls}`;
+      confBadge.textContent = `${(deliveryForecast.confidence || 'low').toUpperCase()} CONFIDENCE`;
+      fcHeader.append(estDate, confBadge);
+
+      const fcNotes = document.createElement("div");
+      fcNotes.className = "relay-ai-forecast-notes";
+      if (deliveryForecast.criticalPathDurationDays) {
+        const cpInfo = document.createElement("p");
+        cpInfo.textContent = `Critical path duration: ${deliveryForecast.criticalPathDurationDays} working days across ${deliveryForecast.criticalPathItems?.length || 0} sequential tasks.`;
+        fcNotes.append(cpInfo);
+      }
+      if (deliveryForecast.limitations) {
+        const lim = document.createElement("p");
+        lim.className = "relay-ai-forecast-limitation";
+        lim.textContent = `Assumption note: ${deliveryForecast.limitations}`;
+        fcNotes.append(lim);
+      }
+      fcCard.append(fcHeader, fcNotes);
+      fcSec.append(fcTitle, fcCard);
+      container.append(fcSec);
+
+      // 4. Team Workload Summary Section
+      const wlSec = document.createElement("div");
+      wlSec.className = "relay-ai-report-section";
+      const wlTitle = document.createElement("h3");
+      wlTitle.className = "relay-ai-traceability-section-title";
+      wlTitle.textContent = `4. Team Workload (${teamWorkload.totalMembers || 0} Members)`;
+      wlSec.append(wlTitle);
+
+      const membersList = teamWorkload.members || [];
+      if (membersList.length === 0) {
+        const emptyWl = document.createElement("p");
+        emptyWl.className = "relay-ai-about-desc";
+        emptyWl.textContent = "No assigned developers or profiles registered.";
+        wlSec.append(emptyWl);
+      } else {
+        const wGrid = document.createElement("div");
+        wGrid.className = "relay-ai-matrix-list";
+        for (const m of membersList) {
+          const mCard = document.createElement("div");
+          mCard.className = "relay-ai-req-card";
+          const mHead = document.createElement("div");
+          mHead.className = "relay-ai-req-header";
+          const mName = document.createElement("strong");
+          mName.className = "relay-ai-req-title";
+          mName.textContent = `@${m.username}`;
+
+          const wBadge = document.createElement("span");
+          const wBadgeCls = m.workloadStatus === 'healthy' || m.workloadStatus === 'available' ? 'verified' : m.workloadStatus === 'overloaded' ? 'gap' : 'unverified';
+          wBadge.className = `relay-ai-traceability-status-badge ${wBadgeCls}`;
+          wBadge.textContent = m.workloadStatus.replace('_', ' ').toUpperCase();
+          mHead.append(mName, wBadge);
+
+          const mDetails = document.createElement("p");
+          mDetails.className = "relay-ai-req-body";
+          if (m.weeklyCapacityHours !== null) {
+            mDetails.textContent = `${m.openAssignedIssuesCount} open task(s) (Max concurrent: ${m.maxConcurrentTasks}, Weekly capacity: ${m.weeklyCapacityHours}h). Focus: ${m.currentFocus || 'General'}`;
+          } else {
+            mDetails.textContent = `${m.openAssignedIssuesCount} open task(s). ${m.notice || ''}`;
+          }
+          mCard.append(mHead, mDetails);
+          wGrid.append(mCard);
+        }
+        wlSec.append(wGrid);
+      }
+      container.append(wlSec);
+
+      // 5. Stakeholder Update (Editable Draft) Section
+      const suSec = document.createElement("div");
+      suSec.className = "relay-ai-report-section";
+      const suTitle = document.createElement("h3");
+      suTitle.className = "relay-ai-traceability-section-title";
+      suTitle.textContent = "5. Stakeholder Update (Editable Draft)";
+
+      const suDesc = document.createElement("p");
+      suDesc.className = "relay-ai-about-desc";
+      suDesc.textContent = "Review and copy or edit the status update for your team standup or stakeholder sync:";
+
+      const suTextarea = document.createElement("textarea");
+      suTextarea.className = "relay-ai-reports-textarea";
+      suTextarea.rows = 12;
+      suTextarea.value = stakeholderUpdate.draftText || "";
+      suTextarea.textContent = stakeholderUpdate.draftText || "";
+
+      const suActions = document.createElement("div");
+      suActions.className = "relay-ai-report-actions";
+
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "relay-ai-btn relay-ai-btn-primary relay-ai-btn-sm";
+      copyBtn.textContent = "Copy Update to Clipboard";
+      copyBtn.addEventListener("click", () => {
+        if (navigator?.clipboard?.writeText) {
+          navigator.clipboard.writeText(suTextarea.value);
+        }
+        copyBtn.textContent = "Copied!";
+        setTimeout(() => { copyBtn.textContent = "Copy Update to Clipboard"; }, 2000);
+      });
+      suActions.append(copyBtn);
+
+      suSec.append(suTitle, suDesc, suTextarea, suActions);
+      container.append(suSec);
+
+      ui["reports-body"].append(container);
+
+    } catch (err) {
+      ui["reports-loading"].classList.remove("hidden");
+      ui["reports-loading"].hidden = false;
+      ui["reports-loading"].textContent = `PM Reports request failed: ${err.message || 'Network error'}`;
     }
   }
 

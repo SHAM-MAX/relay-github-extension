@@ -1771,4 +1771,118 @@ textarea:focus-visible {
   line-height: 1.4;
 }
 
+/* 11. PM REPORTS & DELIVERY FORECASTING */
+.relay-ai-reports-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px 14px 24px;
+}
+
+.relay-ai-report-section {
+  background: rgba(14, 25, 44, 0.7);
+  border: 1px solid rgba(135, 174, 232, 0.16);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.relay-ai-report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(135, 174, 232, 0.12);
+  padding-bottom: 8px;
+}
+
+.relay-ai-report-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f5f7fc;
+  letter-spacing: 0.2px;
+}
+
+.relay-ai-badge-risk {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.relay-ai-badge-risk.low {
+  background: rgba(46, 160, 67, 0.2);
+  color: #3fb950;
+  border: 1px solid rgba(46, 160, 67, 0.4);
+}
+.relay-ai-badge-risk.medium {
+  background: rgba(210, 153, 34, 0.2);
+  color: #e3b341;
+  border: 1px solid rgba(210, 153, 34, 0.4);
+}
+.relay-ai-badge-risk.high, .relay-ai-badge-risk.critical {
+  background: rgba(248, 81, 73, 0.2);
+  color: #ff7b72;
+  border: 1px solid rgba(248, 81, 73, 0.4);
+}
+
+.relay-ai-forecast-card {
+  background: rgba(10, 19, 35, 0.85);
+  border: 1px solid rgba(88, 166, 255, 0.25);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.relay-ai-forecast-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.relay-ai-forecast-headline {
+  font-size: 13px;
+  font-weight: 700;
+  color: #9fc9ff;
+}
+
+.relay-ai-forecast-notes {
+  font-size: 11px;
+  color: #8b949e;
+  line-height: 1.45;
+  border-left: 2px solid rgba(135, 174, 232, 0.3);
+  padding-left: 8px;
+  margin-top: 4px;
+}
+
+.relay-ai-reports-textarea {
+  width: 100%;
+  background: rgba(6, 13, 24, 0.9);
+  color: #e6edf3;
+  border: 1px solid rgba(135, 174, 232, 0.2);
+  border-radius: 6px;
+  padding: 10px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.relay-ai-reports-textarea:focus {
+  border-color: #58a6ff;
+  outline: none;
+}
+
+.relay-ai-report-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+
 

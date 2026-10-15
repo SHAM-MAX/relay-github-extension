@@ -127,6 +127,10 @@ async function panel(opts = {}) {
       ok: true,
       json: async () => ({ traceability: [], gaps: {}, summary: {} })
     })),
+    getPmReports: opts.getPmReports || (async () => ({
+      ok: true,
+      json: async () => ({ success: true, data: {} })
+    })),
     send: (message, context) => {
       env.calls.push({ message, context });
       return new Promise((resolve, reject) => { env.resolveAI = resolve; env.rejectAI = reject; });
@@ -1704,6 +1708,157 @@ test('Requirements Traceability Matrix dashboard renders requirements, linked is
   await backBtn.click();
   await settle();
   assert.equal(traceView.classList.contains('hidden'), true);
+});
+
+test('gear menu opens PM Reports & Delivery Forecasting view and renders report sections', async () => {
+  let reportsCalledContext = null;
+  const mockReportsData = {
+    reports: {
+      projectStatusReport: {
+        repoName: 'SHAM-MAX/GitHub-Kanban-Practice',
+        overallStatus: 'healthy',
+        totalIssuesCount: 12,
+        openIssuesCount: 4,
+        closedIssuesCount: 8,
+        completionRate: 67,
+        overdueIssuesCount: 1,
+        stalledIssuesCount: 1,
+        overdueIssues: [{ number: 12, title: 'Old bug', html_url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/issues/12' }],
+        stalledIssues: [],
+        majorRisks: [{ id: 'risk-1', title: 'Scope expansion', severity: 'high', probability: 'medium', impact: 'high' }],
+        deliveryGaps: [{ title: 'Unlinked PR #77' }]
+      },
+      milestoneReport: {
+        totalMilestones: 1,
+        milestonesAtRiskCount: 0,
+        milestones: [
+          {
+            id: 'm-1',
+            title: 'v1.0 Release',
+            totalIssues: 5,
+            closedIssues: 4,
+            openIssues: 1,
+            completionRate: 80,
+            healthStatus: 'on_track',
+            blockedIssues: []
+          }
+        ]
+      },
+      deliveryForecast: {
+        status: 'computed',
+        confidence: 'medium',
+        estimatedCompletionDate: '2026-10-25',
+        criticalPathDurationDays: 10,
+        criticalPathItems: [{ itemId: 'task-1', title: 'Database Migration', slack: 0 }],
+        assumptions: ['Derived via CPM'],
+        limitations: 'Based on dynamic schedule estimates'
+      },
+      teamWorkload: {
+        totalMembers: 2,
+        overloadedCount: 0,
+        availableCount: 1,
+        members: [
+          {
+            username: 'alice',
+            openAssignedIssuesCount: 3,
+            weeklyCapacityHours: 40,
+            maxConcurrentTasks: 5,
+            isOverloaded: false,
+            workloadStatus: 'healthy',
+            currentFocus: 'Backend'
+          },
+          {
+            username: 'bob',
+            openAssignedIssuesCount: 1,
+            weeklyCapacityHours: null,
+            maxConcurrentTasks: null,
+            isOverloaded: false,
+            workloadStatus: 'unregistered',
+            notice: 'Declared capacity not registered; availability and capacity cannot be inferred from activity alone.'
+          }
+        ]
+      },
+      stakeholderUpdate: {
+        date: '2026-10-15',
+        draftText: '### Project Status Update: SHAM-MAX/GitHub-Kanban-Practice\n\n**Overall Health:** Healthy (67% closed issues)\n'
+      },
+      generatedAt: '2026-10-15T12:00:00.000Z'
+    }
+  };
+
+  const env = await panel({
+    checkAuth: async () => true,
+    url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice',
+    getPmReports: async (ctx) => {
+      reportsCalledContext = ctx;
+      return {
+        ok: true,
+        json: async () => mockReportsData
+      };
+    }
+  });
+
+  env.window.postMessage({
+    type: 'relay-ai-host-context',
+    context: {
+      owner: 'SHAM-MAX',
+      repository: 'GitHub-Kanban-Practice',
+      pageType: 'repository'
+    }
+  }, '*');
+  await settle();
+
+  // Click gear menu item for reports
+  await env.get('gear').click();
+  await settle();
+
+  const gearReports = env.get('gear-reports');
+  assert.ok(gearReports, 'gear-reports button must exist');
+  await gearReports.click();
+  await settle();
+
+  // Verify reports view opened and loading cleared
+  const reportsView = env.get('reports-view');
+  assert.equal(reportsView.classList.contains('hidden'), false);
+  const reportsLoading = env.get('reports-loading');
+  assert.equal(reportsLoading.hidden, true);
+  assert.equal(reportsLoading.classList.contains('hidden'), true);
+  const reportsBody = env.get('reports-body');
+  assert.equal(reportsBody.hidden, false);
+  assert.equal(reportsBody.classList.contains('hidden'), false);
+
+  assert.equal(reportsCalledContext.owner, 'SHAM-MAX');
+  assert.equal(reportsCalledContext.repository, 'GitHub-Kanban-Practice');
+
+  // Verify report sections rendered
+  const sections = walk(env.document).filter(el => el.classList && el.classList.contains('relay-ai-report-section'));
+  assert.ok(sections.length >= 5);
+
+  // Verify forecast card content
+  const forecastCard = walk(env.document).find(el => el.classList && el.classList.contains('relay-ai-forecast-card'));
+  assert.ok(forecastCard);
+  const estDate = walk(forecastCard).find(el => el.classList && el.classList.contains('relay-ai-forecast-date'));
+  assert.ok(estDate);
+  assert.ok(estDate.textContent.includes('2026-10-25'));
+
+  // Verify workload summary rendered with Alice & Bob
+  const workloadAlice = walk(env.document).find(el => el.textContent && el.textContent.includes('@alice'));
+  assert.ok(workloadAlice);
+  const workloadBob = walk(env.document).find(el => el.textContent && el.textContent.includes('@bob'));
+  assert.ok(workloadBob);
+  assert.ok(workloadBob.textContent.includes('Declared capacity not registered'));
+
+  // Verify editable stakeholder update textarea
+  const updateArea = walk(env.document).find(el => el.classList && el.classList.contains('relay-ai-reports-textarea'));
+  assert.ok(updateArea);
+  assert.ok(updateArea.value.includes('Healthy (67% closed issues)'));
+
+  // Verify back button closes view
+  const backBtn = env.get('back-reports');
+  assert.ok(backBtn);
+  await backBtn.click();
+  await settle();
+  assert.equal(reportsView.classList.contains('hidden'), true);
 });
 
 
