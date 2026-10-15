@@ -1260,6 +1260,39 @@ textarea:focus-visible {
   border: 1px solid #2ea043 !important;
 }
 
+.relay-ai-btn-override-warning {
+  background: rgba(210, 153, 34, 0.15) !important;
+  color: #e3b341 !important;
+  border: 1px solid rgba(210, 153, 34, 0.45) !important;
+}
+
+.relay-ai-btn-override-warning:hover:not(:disabled) {
+  background: rgba(210, 153, 34, 0.3) !important;
+  border-color: #e3b341 !important;
+}
+
+.relay-ai-assignment-override-confirm {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid rgba(248, 81, 73, 0.4);
+  font-size: 11px;
+  color: #f0f6fc;
+}
+
+.relay-ai-assignment-override-confirm p {
+  margin: 0 0 6px 0;
+  line-height: 1.4;
+  color: #ff7b72;
+}
+
+.relay-ai-assignment-override-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .relay-ai-assignee-manual-select {
   width: 100%;
   padding: 5px 8px;

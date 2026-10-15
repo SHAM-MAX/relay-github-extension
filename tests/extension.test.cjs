@@ -1298,11 +1298,13 @@ test('regression: overloaded candidate or low fit candidate renders warning/dang
   const sending = env.get('form').emit('submit');
   await settle();
 
+  const proposedPlan = {
+    issues: [{ id: 'task-quality', title: 'Quality Issue', body: 'Body' }]
+  };
+
   env.resolveAI({
     reply: 'Plan',
-    issuePlan: {
-      issues: [{ id: 'task-quality', title: 'Quality Issue', body: 'Body' }]
-    },
+    issuePlan: proposedPlan,
     context: { owner: 'SHAM-MAX', repository: 'new-kanban-board' }
   });
   await sending;
@@ -1327,6 +1329,49 @@ test('regression: overloaded candidate or low fit candidate renders warning/dang
   const opt = walk(manualSelect).find(el => el.value === 'overloaded_dev');
   assert.ok(opt);
   assert.match(opt.textContent, /Overloaded/);
+
+  // Safety Check: Verify standard "Approve Assignment" button is NOT rendered for overloaded candidate
+  assert.equal(walk(topSpotlight).some(el => el.textContent === 'Approve Assignment'), false);
+
+  // Must render explicit override warning button instead
+  const overrideBtn = walk(topSpotlight).find(el => el.classList && el.classList.contains('relay-ai-btn-override-warning'));
+  assert.ok(overrideBtn);
+  assert.match(overrideBtn.textContent, /Override Warning & Assign/);
+
+  // Clicking the override button opens confirmation explaining workload and skill risks
+  await overrideBtn.click();
+  await settle();
+
+  const confirmBox = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-assignment-override-confirm'));
+  assert.ok(confirmBox);
+  assert.match(confirmBox.textContent, /Risk Warning/);
+  assert.match(confirmBox.textContent, /Candidate is overloaded \(5 open tasks vs 3 capacity\)/);
+  assert.match(confirmBox.textContent, /Skill match is low \(0%\)/);
+
+  // Clicking Cancel withdraws override attempt
+  const cancelBtn = walk(confirmBox).find(el => el.textContent === 'Cancel');
+  assert.ok(cancelBtn);
+  await cancelBtn.click();
+  await settle();
+
+  assert.equal(proposedPlan.issues[0].assignee, undefined);
+  assert.equal(walk(cards[0]).some(el => el.classList && el.classList.contains('relay-ai-assignment-override-confirm')), false);
+
+  // Re-open override and confirm deliberate assignment
+  const reopenOverrideBtn = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-btn-override-warning'));
+  await reopenOverrideBtn.click();
+  await settle();
+
+  const reConfirmBox = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-assignment-override-confirm'));
+  assert.ok(reConfirmBox);
+  const confirmYesBtn = walk(reConfirmBox).find(el => el.textContent === 'I Understand the Risks, Assign Anyway');
+  assert.ok(confirmYesBtn);
+  await confirmYesBtn.click();
+  await settle();
+
+  // Explicit override assignment confirmed
+  assert.equal(proposedPlan.issues[0].assignee, 'overloaded_dev');
+  assert.equal(proposedPlan.issues[0].assignees[0], 'overloaded_dev');
 });
 
 test('developer profile modal displays loading, empty, and default states correctly', async () => {

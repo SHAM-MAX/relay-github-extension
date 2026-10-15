@@ -694,12 +694,24 @@
           manualSelect.append(defaultOpt);
 
           manualSelect.addEventListener("change", () => {
-            if (manualSelect.value) {
-              issue.assignee = manualSelect.value;
-              issue.assignees = [manualSelect.value];
+            const selectedUser = manualSelect.value;
+            if (selectedUser) {
+              const matchedCandidate = (issue._recommendations || []).find(r => r.githubUsername === selectedUser);
+              const isOverloadedCand = matchedCandidate && (matchedCandidate.isOverloaded || (matchedCandidate.criteria?.workloadAndEffort?.score <= 15) || (matchedCandidate.missingDataWarnings && matchedCandidate.missingDataWarnings.some(w => w.includes('capacity'))));
+              const isLowFitCand = matchedCandidate && (matchedCandidate.overallScore < 45 || matchedCandidate.fitLevel === 'weak' || matchedCandidate.isRecommended === false);
+              
+              if (isOverloadedCand || isLowFitCand) {
+                // Require confirmation
+                issue._pendingOverrideConfirm = selectedUser;
+              } else {
+                issue.assignee = selectedUser;
+                issue.assignees = [selectedUser];
+                delete issue._pendingOverrideConfirm;
+              }
             } else {
               issue.assignee = null;
               issue.assignees = [];
+              delete issue._pendingOverrideConfirm;
             }
             if (typeof saveConversation === "function") saveConversation();
             refreshCard();
@@ -839,29 +851,97 @@
             topExplanation.className = "relay-ai-candidate-rationale";
             topExplanation.textContent = topCandidate.rationale || "Evaluated based on balanced team criteria.";
 
-            // Action row: Approve assignment button
+            // Action row: Approve assignment button or Override Warning
             const topActionRow = document.createElement("div");
             topActionRow.className = "relay-ai-top-actions";
 
-            const approveBtn = document.createElement("button");
-            approveBtn.type = "button";
-            approveBtn.className = "relay-ai-btn relay-ai-btn-sm " + (chosen === topCandidate.githubUsername ? "relay-ai-btn-approved" : "relay-ai-btn-primary");
-            approveBtn.textContent = chosen === topCandidate.githubUsername ? "✓ Assignment Approved" : "Approve Assignment";
-            approveBtn.addEventListener("click", () => {
-              if (chosen === topCandidate.githubUsername) {
-                // Deselect / withdraw approval
-                issue.assignee = null;
-                issue.assignees = [];
-              } else {
-                // Approve top recommendation
-                issue.assignee = topCandidate.githubUsername;
-                issue.assignees = [topCandidate.githubUsername];
-              }
-              if (typeof saveConversation === "function") saveConversation();
-              refreshCard();
-            });
+            // If the top candidate is overloaded or weak fit, ordinary "Approve Assignment" is blocked.
+            // A PM may only assign via an explicit override action with a clear confirmation dialog.
+            const isUnqualified = isOverloaded || isLowFit || topCandidate.isRecommended === false;
 
-            topActionRow.append(approveBtn);
+            if (isUnqualified) {
+              if (issue._pendingOverrideConfirm === topCandidate.githubUsername) {
+                // Render explicit override confirmation dialog
+                const overrideBox = document.createElement("div");
+                overrideBox.className = "relay-ai-assignment-override-confirm";
+
+                const riskWarning = document.createElement("p");
+                const overloadMsg = isOverloaded ? `Candidate is overloaded (${topCandidate.criteria?.workloadAndEffort?.openAssignedIssues || 5} open tasks vs ${topCandidate.criteria?.workloadAndEffort?.maxConcurrentTasks || 3} capacity).` : '';
+                const skillMsg = topCandidate.criteria?.technicalSkills?.score < 40 ? `Skill match is low (${topCandidate.criteria?.technicalSkills?.score || 0}%).` : '';
+                riskWarning.textContent = `⚠ Risk Warning: ${overloadMsg} ${skillMsg} Deliberate override may cause delivery delays or quality issues.`;
+
+                const btnRow = document.createElement("div");
+                btnRow.className = "relay-ai-assignment-override-actions";
+
+                const cancelBtn = document.createElement("button");
+                cancelBtn.type = "button";
+                cancelBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
+                cancelBtn.textContent = "Cancel";
+                cancelBtn.addEventListener("click", () => {
+                  delete issue._pendingOverrideConfirm;
+                  refreshCard();
+                });
+
+                const confirmOverrideBtn = document.createElement("button");
+                confirmOverrideBtn.type = "button";
+                confirmOverrideBtn.className = "relay-ai-btn relay-ai-btn-danger-outline relay-ai-btn-sm";
+                confirmOverrideBtn.textContent = "I Understand the Risks, Assign Anyway";
+                confirmOverrideBtn.addEventListener("click", () => {
+                  delete issue._pendingOverrideConfirm;
+                  issue.assignee = topCandidate.githubUsername;
+                  issue.assignees = [topCandidate.githubUsername];
+                  if (typeof saveConversation === "function") saveConversation();
+                  refreshCard();
+                });
+
+                btnRow.append(cancelBtn, confirmOverrideBtn);
+                overrideBox.append(riskWarning, btnRow);
+                topActionRow.append(overrideBox);
+              } else {
+                const overrideBtn = document.createElement("button");
+                overrideBtn.type = "button";
+                if (chosen === topCandidate.githubUsername) {
+                  overrideBtn.className = "relay-ai-btn relay-ai-btn-sm relay-ai-btn-approved";
+                  overrideBtn.textContent = "✓ Assigned via Override (Withdraw)";
+                  overrideBtn.addEventListener("click", () => {
+                    issue.assignee = null;
+                    issue.assignees = [];
+                    if (typeof saveConversation === "function") saveConversation();
+                    refreshCard();
+                  });
+                } else {
+                  overrideBtn.className = "relay-ai-btn relay-ai-btn-sm relay-ai-btn-override-warning";
+                  overrideBtn.textContent = "⚠ Override Warning & Assign...";
+                  overrideBtn.title = "Candidate is overloaded or low fit. Requires explicit PM risk acknowledgment.";
+                  overrideBtn.addEventListener("click", () => {
+                    issue._pendingOverrideConfirm = topCandidate.githubUsername;
+                    refreshCard();
+                  });
+                }
+                topActionRow.append(overrideBtn);
+              }
+            } else {
+              // Qualified candidate: standard approval button
+              const approveBtn = document.createElement("button");
+              approveBtn.type = "button";
+              approveBtn.className = "relay-ai-btn relay-ai-btn-sm " + (chosen === topCandidate.githubUsername ? "relay-ai-btn-approved" : "relay-ai-btn-primary");
+              approveBtn.textContent = chosen === topCandidate.githubUsername ? "✓ Assignment Approved" : "Approve Assignment";
+              approveBtn.addEventListener("click", () => {
+                if (chosen === topCandidate.githubUsername) {
+                  // Deselect / withdraw approval
+                  issue.assignee = null;
+                  issue.assignees = [];
+                } else {
+                  // Approve top recommendation
+                  issue.assignee = topCandidate.githubUsername;
+                  issue.assignees = [topCandidate.githubUsername];
+                }
+                if (typeof saveConversation === "function") saveConversation();
+                refreshCard();
+              });
+              topActionRow.append(approveBtn);
+            }
+
             topSpotlight.append(topHeader, topExplanation, topActionRow);
             topRecContainer.append(topSpotlight);
 
@@ -954,20 +1034,70 @@
                 breakdownToggle.textContent = breakdownDiv.hidden ? "View Criteria Breakdown ▼" : "Hide Criteria Breakdown ▲";
               });
 
-              // Click to select this recommended assignee (Advisory Confirmation)
+              // Click to select this candidate (requires explicit override confirmation if overloaded or low fit)
               candCard.addEventListener("click", () => {
                 if (issue.assignee === candidate.githubUsername) {
                   // Deselect
                   issue.assignee = null;
                   issue.assignees = [];
+                  delete issue._pendingOverrideConfirm;
                 } else {
-                  // Select
-                  issue.assignee = candidate.githubUsername;
-                  issue.assignees = [candidate.githubUsername];
+                  const candOverloaded = candidate.isOverloaded || (candidate.criteria?.workloadAndEffort?.score <= 15) || (candidate.missingDataWarnings && candidate.missingDataWarnings.some(w => w.includes('capacity')));
+                  const candLowFit = candidate.overallScore < 45 || candidate.fitLevel === 'weak' || candidate.isRecommended === false;
+                  if (candOverloaded || candLowFit) {
+                    issue._pendingOverrideConfirm = candidate.githubUsername;
+                  } else {
+                    issue.assignee = candidate.githubUsername;
+                    issue.assignees = [candidate.githubUsername];
+                    delete issue._pendingOverrideConfirm;
+                  }
                 }
                 if (typeof saveConversation === "function") saveConversation();
                 refreshCard();
               });
+
+              // If this candidate card is the target of a pending override confirmation, render confirmation box
+              if (issue._pendingOverrideConfirm === candidate.githubUsername) {
+                const cardOverrideBox = document.createElement("div");
+                cardOverrideBox.className = "relay-ai-assignment-override-confirm";
+
+                const candOverloaded = candidate.isOverloaded || (candidate.criteria?.workloadAndEffort?.score <= 15);
+                const overloadMsg = candOverloaded ? `Developer is overloaded (${candidate.criteria?.workloadAndEffort?.openAssignedIssues || 0} open issues vs ${candidate.criteria?.workloadAndEffort?.maxConcurrentTasks || 3} max).` : '';
+                const skillMsg = (candidate.criteria?.technicalSkills?.score || 0) < 40 ? `Skill match is low (${candidate.criteria?.technicalSkills?.score || 0}%).` : '';
+                
+                const riskP = document.createElement("p");
+                riskP.textContent = `⚠ Risk Warning: ${overloadMsg} ${skillMsg} Deliberate override requires PM confirmation.`;
+
+                const btnRow = document.createElement("div");
+                btnRow.className = "relay-ai-assignment-override-actions";
+
+                const cancelBtn = document.createElement("button");
+                cancelBtn.type = "button";
+                cancelBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
+                cancelBtn.textContent = "Cancel";
+                cancelBtn.addEventListener("click", (e) => {
+                  e.stopPropagation();
+                  delete issue._pendingOverrideConfirm;
+                  refreshCard();
+                });
+
+                const confirmBtn = document.createElement("button");
+                confirmBtn.type = "button";
+                confirmBtn.className = "relay-ai-btn relay-ai-btn-danger-outline relay-ai-btn-sm";
+                confirmBtn.textContent = "Confirm Override";
+                confirmBtn.addEventListener("click", (e) => {
+                  e.stopPropagation();
+                  delete issue._pendingOverrideConfirm;
+                  issue.assignee = candidate.githubUsername;
+                  issue.assignees = [candidate.githubUsername];
+                  if (typeof saveConversation === "function") saveConversation();
+                  refreshCard();
+                });
+
+                btnRow.append(cancelBtn, confirmBtn);
+                cardOverrideBox.append(riskP, btnRow);
+                candCard.append(cardOverrideBox);
+              }
 
               candCard.append(topRow, rationale);
               if (candWarnings.length > 0) candCard.append(candWarnDiv);
