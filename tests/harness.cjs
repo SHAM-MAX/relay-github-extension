@@ -93,8 +93,16 @@ function documentFixture(type = false) {
       if (element.hidden && !element.classList.contains('hidden')) element.classList.add('hidden');
       document.body.append(element);
     }
-    for (const match of html.matchAll(/data-relay-prompt="([^"]+)"/g)) {
-      const element = document.createElement('button'); element.dataset.relayPrompt = match[1]; document.body.append(element);
+    for (const match of html.matchAll(/<button\b([^>]*)>/g)) {
+      const attrs = match[1];
+      if (attrs.includes('data-relay-prompt="')) {
+        const promptMatch = attrs.match(/data-relay-prompt="([^"]+)"/);
+        const actionMatch = attrs.match(/data-relay-action="([^"]+)"/);
+        const element = document.createElement('button');
+        if (promptMatch) element.dataset.relayPrompt = promptMatch[1];
+        if (actionMatch) element.dataset.relayAction = actionMatch[1];
+        document.body.append(element);
+      }
     }
   } else if (type === 'dashboard') {
     const html = fs.readFileSync(path.join(root, 'dashboard.html'), 'utf8');

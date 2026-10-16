@@ -127,6 +127,10 @@ async function panel(opts = {}) {
       ok: true,
       json: async () => ({ traceability: [], gaps: {}, summary: {} })
     })),
+    getRepositories: opts.getRepositories || (async () => ({
+      ok: true,
+      json: async () => ({ repositories: [{ full_name: 'SHAM-MAX/new-kanban-board' }] })
+    })),
     getPmReports: opts.getPmReports || (async () => ({
       ok: true,
       json: async () => ({ success: true, data: {} })
@@ -2376,6 +2380,99 @@ test('in-page workspace overlay preserves repository context, authenticated sess
   await closeBtn.click();
   await settle();
   assert.equal(postedMessage?.type, 'relay-ai-close-workspace');
+});
+
+test('floating workspace reproduces reference design: hero eyebrow, 6 functional action cards, header controls, and composer toolbar', async () => {
+  const env = await panel();
+
+  // 1. Header elements
+  assert.equal(env.get('repository').textContent, 'SHAM-MAX/new-kanban-board');
+  const minimizeBtn = env.get('minimize');
+  const closeBtn = env.get('close');
+  assert.ok(minimizeBtn, 'Header minimize control must exist');
+  assert.ok(closeBtn, 'Header close control must exist');
+
+  // Verify minimize sends relay-ai-minimize postMessage to parent
+  let postedMessage = null;
+  env.window.parent = {
+    postMessage: (msg) => { postedMessage = msg; }
+  };
+  await minimizeBtn.click();
+  await settle();
+  assert.equal(postedMessage?.type, 'relay-ai-minimize');
+
+  // Verify close sends relay-ai-close postMessage to parent
+  await closeBtn.click();
+  await settle();
+  assert.equal(postedMessage?.type, 'relay-ai-close');
+
+  // 2. Centered hero section & 6 functional action cards
+  const promptButtons = walk(env.document).filter(el => el.dataset && el.dataset.relayPrompt);
+  assert.ok(promptButtons.length >= 6, 'Must contain at least 6 prompt action cards');
+
+  // Test each action card populates composer with appropriate prompt
+  const askCard = promptButtons.find(b => b.dataset.relayAction === 'ask');
+  assert.ok(askCard, 'Ask action card must exist');
+  await askCard.click();
+  await settle();
+  assert.match(env.get('input').value, /codebase/i);
+
+  const debugCard = promptButtons.find(b => b.dataset.relayAction === 'debug');
+  assert.ok(debugCard, 'Debug action card must exist');
+  await debugCard.click();
+  await settle();
+  assert.match(env.get('input').value, /bugs and issues/i);
+
+  const prCard = promptButtons.find(b => b.dataset.relayAction === 'pull-requests');
+  assert.ok(prCard, 'Pull requests action card must exist');
+  await prCard.click();
+  await settle();
+  assert.match(env.get('input').value, /pull requests/i);
+
+  const issueCard = promptButtons.find(b => b.dataset.relayAction === 'create-issue');
+  assert.ok(issueCard, 'Create issue action card must exist');
+  await issueCard.click();
+  await settle();
+  assert.match(env.get('input').value, /GitHub issues/i);
+
+  const codeCard = promptButtons.find(b => b.dataset.relayAction === 'write-code');
+  assert.ok(codeCard, 'Write code action card must exist');
+  await codeCard.click();
+  await settle();
+  assert.match(env.get('input').value, /generate, write, and refactor/i);
+
+  const agentCard = promptButtons.find(b => b.dataset.relayAction === 'agent');
+  assert.ok(agentCard, 'Agent action card must exist');
+  await agentCard.click();
+  await settle();
+  assert.match(env.get('input').value, /agent workflow/i);
+
+  // 3. Confirm removed controls are absent from the floating workspace composer
+  assert.equal(env.get('mode-pill'), null, 'Ask mode pill must be removed');
+  assert.equal(env.get('repo-pill'), null, 'Current repository pill must be removed');
+  assert.equal(env.get('auto-pill'), null, 'Auto mode pill must be removed');
+
+  const feedbackButtons = walk(env.document).filter(el => el.classList && el.classList.contains('relay-ai-feedback-btn'));
+  const feedbackLabels = feedbackButtons.map(b => b.getAttribute('aria-label'));
+  assert.equal(feedbackLabels.includes('Thumbs up'), false, 'Thumbs up icon must be removed');
+  assert.equal(feedbackLabels.includes('Thumbs down'), false, 'Thumbs down icon must be removed');
+  assert.equal(feedbackLabels.includes('Copy'), false, 'Copy icon must be removed');
+  assert.equal(feedbackLabels.includes('More actions'), false, 'Far-right dropdown chevron must be removed');
+
+  // Confirm remaining feedback icons (Focus context, Refresh) are present
+  assert.ok(env.get('focus-context'), 'Focus context button must remain');
+  assert.ok(env.get('feedback-refresh'), 'Refresh button must remain');
+
+  // 4. Confirm remaining toolbar controls & status indicator
+  const attachBtn = env.get('attach');
+  const customPicker = env.get('custom-picker-trigger');
+  const sendBtn = env.get('send');
+  const statusDot = env.get('status-dot');
+
+  assert.ok(attachBtn, 'Attach file button must remain');
+  assert.ok(customPicker, 'AI model selector trigger must remain');
+  assert.ok(sendBtn, 'Send button must remain');
+  assert.ok(statusDot, 'Connection status indicator dot must remain');
 });
 
 

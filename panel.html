@@ -112,19 +112,20 @@
     <header class="relay-ai-header">
 
       <div class="relay-ai-brand">
-
         <div
           class="relay-ai-mark"
           aria-hidden="true"
         >
         </div>
-
-        <h1>
-          Relay AI
-        </h1>
-
+        <div class="relay-ai-brand-titles">
+          <h1>
+            Relay AI
+          </h1>
+          <span class="relay-ai-brand-subtitle">
+            GitHub Assistant
+          </span>
+        </div>
       </div>
-
 
       <!-- ===================================================
            HEADER ACTIONS
@@ -133,7 +134,6 @@
       <div class="relay-ai-header-actions">
 
         <!-- GitHub / Repository selector -->
-
         <button
           id="relay-ai-refresh"
           class="relay-ai-repository-button"
@@ -141,10 +141,10 @@
           aria-label="Select GitHub repository"
           title="Select GitHub repository"
         >
-
           <svg
-            width="31"
-            height="31"
+            class="relay-ai-github-icon"
+            width="20"
+            height="20"
             viewBox="0 0 24 24"
             fill="currentColor"
             aria-hidden="true"
@@ -161,8 +161,8 @@
 
           <svg
             class="relay-ai-repository-chevron"
-            width="19"
-            height="19"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -171,11 +171,31 @@
           >
             <path d="m6 9 6 6 6-6"/>
           </svg>
+        </button>
 
+        <!-- Minimize -->
+        <button
+          id="relay-ai-minimize"
+          class="relay-ai-header-action"
+          type="button"
+          aria-label="Minimize Relay"
+          title="Minimize Relay"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="M5 12h14"/>
+          </svg>
         </button>
 
         <!-- Close -->
-
         <button
           id="relay-ai-close"
           class="relay-ai-header-action"
@@ -183,20 +203,18 @@
           aria-label="Close Relay"
           title="Close Relay"
         >
-
           <svg
-            width="31"
-            height="31"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            stroke-width="1.7"
+            stroke-width="2.2"
+            stroke-linecap="round"
             aria-hidden="true"
           >
-            <path d="M6 6l12 12"/>
-            <path d="M18 6L6 18"/>
+            <path d="M18 6L6 18M6 6l12 12"/>
           </svg>
-
         </button>
 
       </div>
@@ -305,68 +323,203 @@
       >
 
         <div class="relay-ai-empty-content">
-
           <span class="relay-ai-eyebrow">
             YOUR PROJECT, IN FOCUS
           </span>
 
           <h2>
-            What can I help<br>
-            you with?
+            What can I help you with?
           </h2>
 
+          <p class="relay-ai-hero-subtitle">
+            Ask questions, generate code, debug, create issues, and more — all within your GitHub workflow
+          </p>
         </div>
 
+        <!-- 6 Interactive Action Cards matching reference screenshot -->
+        <div class="relay-ai-action-cards" role="region" aria-label="Quick actions">
+          <!-- 1. Ask -->
+          <button
+            type="button"
+            class="relay-ai-action-card"
+            data-relay-action="ask"
+            data-relay-prompt="Help me understand this codebase and answer questions about this repository."
+          >
+            <div class="relay-ai-action-card-header">
+              <div class="relay-ai-card-icon relay-ai-card-icon-ask" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                  <line x1="8" y1="21" x2="16" y2="21"/>
+                  <line x1="12" y1="17" x2="12" y2="21"/>
+                </svg>
+              </div>
+              <div class="relay-ai-card-content">
+                <div class="relay-ai-card-title-row">
+                  <span class="relay-ai-card-title">Ask</span>
+                  <span class="relay-ai-card-arrow" aria-hidden="true">→</span>
+                </div>
+                <p class="relay-ai-card-desc">Get answers from your codebase</p>
+              </div>
+            </div>
+          </button>
 
-        <!-- Existing prompts.
-             Hidden visually by CSS but retained for JS. -->
+          <!-- 2. Debug -->
+          <button
+            type="button"
+            class="relay-ai-action-card"
+            data-relay-action="debug"
+            data-relay-prompt="Help me find and fix bugs and issues in this repository."
+          >
+            <div class="relay-ai-action-card-header">
+              <div class="relay-ai-card-icon relay-ai-card-icon-debug" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="8" y="9" width="8" height="10" rx="4"/>
+                  <path d="M19 10h-2"/>
+                  <path d="M7 10H5"/>
+                  <path d="M19 14h-2"/>
+                  <path d="M7 14H5"/>
+                  <path d="M12 5V2"/>
+                  <path d="m9 7-2-2"/>
+                  <path d="m15 7 2-2"/>
+                </svg>
+              </div>
+              <div class="relay-ai-card-content">
+                <div class="relay-ai-card-title-row">
+                  <span class="relay-ai-card-title">Debug</span>
+                  <span class="relay-ai-card-arrow" aria-hidden="true">→</span>
+                </div>
+                <p class="relay-ai-card-desc">Find and fix issues faster</p>
+              </div>
+            </div>
+          </button>
 
+          <!-- 3. Pull requests -->
+          <button
+            type="button"
+            class="relay-ai-action-card"
+            data-relay-action="pull-requests"
+            data-relay-prompt="Help me review, summarize, and improve pull requests for this repository."
+          >
+            <div class="relay-ai-action-card-header">
+              <div class="relay-ai-card-icon relay-ai-card-icon-prs" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="18" cy="18" r="3"/>
+                  <circle cx="6" cy="6" r="3"/>
+                  <path d="M13 6h3a2 2 0 0 1 2 2v7"/>
+                  <line x1="6" y1="9" x2="6" y2="21"/>
+                </svg>
+              </div>
+              <div class="relay-ai-card-content">
+                <div class="relay-ai-card-title-row">
+                  <span class="relay-ai-card-title">Pull requests</span>
+                  <span class="relay-ai-card-arrow" aria-hidden="true">→</span>
+                </div>
+                <p class="relay-ai-card-desc">Review, summarize, and improve PRs</p>
+              </div>
+            </div>
+          </button>
+
+          <!-- 4. Create issue -->
+          <button
+            type="button"
+            class="relay-ai-action-card"
+            data-relay-action="create-issue"
+            data-relay-prompt="Help me turn these ideas and requirements into structured GitHub issues."
+          >
+            <div class="relay-ai-action-card-header">
+              <div class="relay-ai-card-icon relay-ai-card-icon-issue" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="18" x2="12" y2="12"/>
+                  <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+              </div>
+              <div class="relay-ai-card-content">
+                <div class="relay-ai-card-title-row">
+                  <span class="relay-ai-card-title">Create issue</span>
+                  <span class="relay-ai-card-arrow" aria-hidden="true">→</span>
+                </div>
+                <p class="relay-ai-card-desc">Turn ideas into GitHub issues</p>
+              </div>
+            </div>
+          </button>
+
+          <!-- 5. Write code -->
+          <button
+            type="button"
+            class="relay-ai-action-card"
+            data-relay-action="write-code"
+            data-relay-prompt="Help me generate, write, and refactor code for this feature."
+          >
+            <div class="relay-ai-action-card-header">
+              <div class="relay-ai-card-icon relay-ai-card-icon-code" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="16 18 22 12 16 6"/>
+                  <polyline points="8 6 2 12 8 18"/>
+                </svg>
+              </div>
+              <div class="relay-ai-card-content">
+                <div class="relay-ai-card-title-row">
+                  <span class="relay-ai-card-title">Write code</span>
+                  <span class="relay-ai-card-arrow" aria-hidden="true">→</span>
+                </div>
+                <p class="relay-ai-card-desc">Generate and refactor code</p>
+              </div>
+            </div>
+          </button>
+
+          <!-- 6. Agent -->
+          <button
+            type="button"
+            class="relay-ai-action-card"
+            data-relay-action="agent"
+            data-relay-prompt="Run an agent workflow to automate tasks across this repository."
+          >
+            <div class="relay-ai-action-card-header">
+              <div class="relay-ai-card-icon relay-ai-card-icon-agent" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+                </svg>
+              </div>
+              <div class="relay-ai-card-content">
+                <div class="relay-ai-card-title-row">
+                  <span class="relay-ai-card-title">Agent</span>
+                  <span class="relay-ai-card-arrow" aria-hidden="true">→</span>
+                </div>
+                <p class="relay-ai-card-desc">Automate tasks across your repo</p>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        <!-- Retained original suggestions for harness compatibility -->
         <div
           class="relay-ai-suggestions"
           aria-label="Example messages"
+          hidden
         >
-
           <button
             type="button"
             data-relay-prompt="Help me understand this repository."
           >
-            <span>
-              Understand this repository
-            </span>
-
-            <span aria-hidden="true">
-              ↗
-            </span>
+            <span>Understand this repository</span>
+            <span aria-hidden="true">↗</span>
           </button>
-
-
           <button
             type="button"
             data-relay-prompt="Help me plan the next steps for this task."
           >
-            <span>
-              Plan the next steps
-            </span>
-
-            <span aria-hidden="true">
-              ↗
-            </span>
+            <span>Plan the next steps</span>
+            <span aria-hidden="true">↗</span>
           </button>
-
-
           <button
             type="button"
             data-relay-prompt="Help me review this issue or pull request."
           >
-            <span>
-              Review an issue or pull request
-            </span>
-
-            <span aria-hidden="true">
-              ↗
-            </span>
+            <span>Review an issue or pull request</span>
+            <span aria-hidden="true">↗</span>
           </button>
-
         </div>
 
       </section>
@@ -451,29 +604,42 @@
           Message Relay
         </label>
 
+        <!-- Top row of composer: Input and response utility actions -->
+        <div class="relay-ai-composer-top-row">
+          <textarea
+            id="relay-ai-input"
+            rows="2"
+            maxlength="8000"
+            placeholder="Ask Relay about this repository, issue, pull request, task, or project..."
+            aria-describedby="relay-ai-demo-note relay-ai-shortcut"
+          ></textarea>
 
-        <!-- Message -->
-
-        <textarea
-          id="relay-ai-input"
-          rows="3"
-          maxlength="8000"
-          placeholder="Ask Relay about this repository, issue, pull request, task, or project..."
-          aria-describedby="relay-ai-demo-note relay-ai-shortcut"
-        ></textarea>
-
+          <div class="relay-ai-composer-feedback-actions" aria-label="Response and context actions">
+            <!-- Focus / Context target -->
+            <button id="relay-ai-focus-context" type="button" class="relay-ai-feedback-btn" aria-label="Focus context" title="Focus repository context">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <circle cx="12" cy="12" r="6"/>
+                <circle cx="12" cy="12" r="2"/>
+              </svg>
+            </button>
+            <!-- Refresh -->
+            <button id="relay-ai-feedback-refresh" type="button" class="relay-ai-feedback-btn" aria-label="Refresh" title="Refresh conversation or context">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+            </button>
+          </div>
+        </div>
 
         <!-- Selected attachments -->
-
         <ul
           id="relay-ai-attachments"
           class="relay-ai-attachments"
           aria-label="Selected files"
         ></ul>
 
-
-        <!-- Composer controls -->
-
+        <!-- Composer controls toolbar matching screenshot -->
         <div class="relay-ai-composer-tools">
 
           <input
@@ -483,44 +649,37 @@
             hidden
           />
 
-
-          <!-- Attach -->
-
+          <!-- Attach file button -->
           <button
             id="relay-ai-attach"
             type="button"
             class="relay-ai-attach"
             title="Attach files (names only; nothing uploaded)"
           >
-
             <svg
-              width="31"
-              height="31"
+              width="18"
+              height="18"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="1.7"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
               aria-hidden="true"
             >
-              <path d="m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l9-9a2 2 0 0 1 3 3l-9 9a1 1 0 0 0 2 2l7-7"/>
+              <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
             </svg>
-
-            <span>
-              Attach file
-            </span>
-
+            <span>Attach file</span>
           </button>
 
-
-          <!-- Character count -->
-
+          <!-- Character count (hidden visually) -->
           <span
             id="relay-ai-count"
             class="relay-ai-count"
+            hidden
           >
             0 / 4,000
           </span>
-
 
           <!-- Hidden Native Model Selector -->
           <select
@@ -549,7 +708,7 @@
             </optgroup>
           </select>
 
-          <!-- Custom UI Model Picker -->
+          <!-- Custom UI Model Picker Pill -->
           <div class="relay-ai-custom-picker" id="relay-ai-custom-picker">
             <button
               id="relay-ai-custom-picker-trigger"
@@ -557,9 +716,15 @@
               type="button"
               aria-haspopup="listbox"
               aria-expanded="false"
+              title="Select AI model"
             >
-              <span id="relay-ai-custom-picker-value">Auto — Recommended</span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              <svg class="relay-ai-model-sparkle" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/>
+              </svg>
+              <span id="relay-ai-custom-picker-value">Select model</span>
+              <svg class="relay-ai-pill-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
             </button>
             <div
               id="relay-ai-custom-picker-dropdown"
@@ -618,9 +783,7 @@
             </div>
           </div>
 
-
-          <!-- Send -->
-
+          <!-- Send Button with paper airplane -->
           <button
             id="relay-ai-send"
             class="relay-ai-send"
@@ -628,29 +791,22 @@
             aria-label="Send message"
             disabled
           >
-
             <svg
-              width="30"
-              height="30"
+              width="20"
+              height="20"
               viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
+              fill="currentColor"
               aria-hidden="true"
             >
-              <path d="M12 19V5"/>
-              <path d="m6 11 6-6 6 6"/>
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
             </svg>
-
           </button>
 
         </div>
 
       </form>
 
-
-      <!-- Keyboard shortcut -->
-
+      <!-- Keyboard shortcut (retained for screen readers) -->
       <p
         id="relay-ai-shortcut"
         class="relay-ai-shortcut"
@@ -660,8 +816,7 @@
         Shift + Enter for a new line
       </p>
 
-
-      <!-- Bottom container -->
+      <!-- Bottom container matching screenshot -->
       <div class="relay-ai-footer-bottom">
         <div class="relay-ai-gear-container">
           <button id="relay-ai-gear" class="relay-ai-gear-btn" aria-label="Settings" title="Settings">
@@ -681,36 +836,32 @@
 
         <p
           id="relay-ai-demo-note"
-        class="relay-ai-demo-note"
-      >
+          class="relay-ai-demo-note"
+        >
+          <!-- Status indicator dot: green when authenticated, teal/blue when unauthenticated -->
+          <span id="relay-ai-status-dot" class="relay-ai-status-dot" aria-hidden="true"></span>
 
-        Messages sent to Relay
+          <span>Messages sent to Relay</span>
 
-        <span>
-          •
-        </span>
+          <span class="relay-ai-demo-dot" aria-hidden="true">•</span>
 
-        Files stay local
+          <span>Files stay local</span>
 
-        <span>
-          •
-        </span>
+          <span class="relay-ai-demo-dot" aria-hidden="true">•</span>
 
-        <span id="relay-ai-auth-unauthenticated">
-          <a id="relay-ai-connect" href="#" class="relay-ai-auth-link">
-            Connect Relay
-          </a>
-        </span>
-        <span id="relay-ai-auth-authenticated" hidden>
-          <span class="relay-ai-auth-status">Connected</span>
-          <span>•</span>
-          <a id="relay-ai-logout" href="#" class="relay-ai-auth-link">
-            Logout
-          </a>
-        </span>
-
-      </p>
-
+          <span id="relay-ai-auth-unauthenticated">
+            <a id="relay-ai-connect" href="#" class="relay-ai-auth-link">
+              Connect Relay
+            </a>
+          </span>
+          <span id="relay-ai-auth-authenticated" hidden>
+            <span class="relay-ai-auth-status">Connected</span>
+            <span class="relay-ai-demo-dot" aria-hidden="true">•</span>
+            <a id="relay-ai-logout" href="#" class="relay-ai-auth-link">
+              Logout
+            </a>
+          </span>
+        </p>
       </div>
     </footer>
 

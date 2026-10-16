@@ -1202,6 +1202,50 @@
 
 
       /*
+       * Panel requests minimize.
+       */
+
+      if (
+        message.type ===
+        "relay-ai-minimize"
+      ) {
+
+        const panel =
+          document.getElementById(
+            "relay-ai-floating-panel"
+          );
+
+        if (panel) {
+
+          panel.classList.remove(
+            "relay-ai-floating-panel-visible"
+          );
+
+          panel.classList.add(
+            "relay-ai-floating-panel-hidden"
+          );
+
+          setTimeout(
+            () => {
+
+              panel.remove();
+
+              showLauncher();
+
+            },
+            180
+          );
+
+        } else {
+
+          showLauncher();
+        }
+
+        return;
+      }
+
+
+      /*
        * Panel requests close.
        */
 

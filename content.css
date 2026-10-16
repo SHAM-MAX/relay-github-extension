@@ -227,17 +227,7 @@
 
 #relay-ai-floating-controls {
   all: initial;
-
-  position: absolute;
-
-  top: 24px;
-  right: 24px;
-
-  z-index: 10;
-
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: none !important;
 }
 
 #relay-ai-floating-minimize,

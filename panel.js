@@ -42,6 +42,8 @@
     "auth-unauthenticated",
     "auth-authenticated",
     "close",
+    "minimize",
+    "status-dot",
     "model-selector",
     "custom-picker-trigger",
     "custom-picker-dropdown",
@@ -179,6 +181,26 @@
     ui.close.addEventListener(
       "click",
       closePanel
+    );
+  }
+
+  function minimizePanel() {
+    try {
+      window.parent.postMessage(
+        {
+          type: "relay-ai-minimize"
+        },
+        "*"
+      );
+    } catch {
+      // Ignore minimize errors.
+    }
+  }
+
+  if (ui.minimize) {
+    ui.minimize.addEventListener(
+      "click",
+      minimizePanel
     );
   }
 
@@ -2520,6 +2542,13 @@
     if (ui["auth-unauthenticated"] && ui["auth-authenticated"]) {
       ui["auth-unauthenticated"].hidden = isAuthenticated;
       ui["auth-authenticated"].hidden = !isAuthenticated;
+    }
+    if (ui["status-dot"]) {
+      if (isAuthenticated) {
+        ui["status-dot"].classList.add("relay-ai-status-dot-active");
+      } else {
+        ui["status-dot"].classList.remove("relay-ai-status-dot-active");
+      }
     }
   }
 
