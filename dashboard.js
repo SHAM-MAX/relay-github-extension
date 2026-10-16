@@ -28,6 +28,8 @@
     repoSelect: $("relay-repo-select"),
     viewGithubLink: $("relay-view-github-link"),
     workspaceRefresh: $("relay-workspace-refresh"),
+    minimizeBtn: $("relay-workspace-minimize-btn"),
+    closeBtn: $("relay-workspace-close-btn"),
     alert: $("relay-workspace-alert"),
     alertMsg: $("relay-workspace-alert-msg"),
     alertClose: $("relay-workspace-alert-close"),
@@ -1551,9 +1553,54 @@
       });
     }
 
+    if (ui.minimizeBtn) {
+      ui.minimizeBtn.addEventListener("click", () => {
+        try {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: "relay-ai-minimize-workspace" }, "*");
+          }
+        } catch (_) {}
+      });
+    }
+
+    if (ui.closeBtn) {
+      ui.closeBtn.addEventListener("click", () => {
+        try {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: "relay-ai-close-workspace" }, "*");
+          }
+        } catch (_) {}
+      });
+    }
+
     if (ui.alertClose) {
       ui.alertClose.addEventListener("click", hideAlert);
     }
+
+    window.addEventListener("message", (event) => {
+      const message = event.data;
+      if (!message) return;
+
+      if (message.type === "relay-ai-host-context" && message.context) {
+        const newCtx = message.context;
+        const oldRepo = state.currentContext && state.currentContext.repository
+          ? `${state.currentContext.owner}/${state.currentContext.repository}`
+          : null;
+        const newRepo = newCtx.repository
+          ? `${newCtx.owner}/${newCtx.repository}`
+          : null;
+
+        state.currentContext = newCtx;
+        updateTopbarRepo();
+
+        if (oldRepo && newRepo && oldRepo !== newRepo) {
+          state.healthData = null;
+          state.traceabilityData = null;
+          state.reportsData = null;
+          switchView(state.activeView);
+        }
+      }
+    });
   }
 
   /* =========================================================

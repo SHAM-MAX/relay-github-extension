@@ -340,20 +340,16 @@
 
     expand.setAttribute(
       "aria-label",
-      "Open Full-Page Workspace"
+      "Expand into Workspace"
     );
 
     expand.title =
-      "Open Full-Page Workspace in new tab";
+      "Expand into Workspace";
 
     expand.addEventListener(
       "click",
       () => {
-        const ctx = context();
-        chrome.runtime.sendMessage({
-          type: "relay-ai-open-workspace",
-          context: ctx
-        });
+        openWorkspaceOverlay();
       }
     );
 
@@ -379,12 +375,118 @@
     frame.addEventListener(
       "load",
       () => {
-
         sendContextToPanel(
           frame
         );
       }
     );
+  }
+
+
+  /* =========================================================
+     FULL-PAGE WORKSPACE IN-PAGE OVERLAY
+     ========================================================= */
+
+  function openWorkspaceOverlay() {
+    if (isAuthPage()) {
+      return;
+    }
+
+    const floatingPanel = document.getElementById("relay-ai-floating-panel");
+    if (floatingPanel) {
+      floatingPanel.classList.remove("relay-ai-floating-panel-visible");
+      floatingPanel.classList.add("relay-ai-floating-panel-hidden");
+      floatingPanel.style.display = "none";
+    }
+
+    hideLauncher();
+
+    let overlay = document.getElementById("relay-ai-workspace-overlay");
+    if (overlay) {
+      overlay.classList.remove("relay-ai-workspace-hidden");
+      overlay.classList.add("relay-ai-workspace-visible");
+      const frame = document.getElementById("relay-ai-workspace-frame");
+      if (frame) {
+        sendContextToWorkspace(frame);
+      }
+      return;
+    }
+
+    overlay = document.createElement("section");
+    overlay.id = "relay-ai-workspace-overlay";
+    overlay.className = "relay-ai-workspace-overlay relay-ai-workspace-visible";
+    overlay.setAttribute("aria-label", "Relay AI PM Workspace");
+
+    const frame = document.createElement("iframe");
+    frame.id = "relay-ai-workspace-frame";
+    frame.className = "relay-ai-workspace-frame";
+    frame.title = "Relay AI — AI Project Management Workspace";
+
+    const ctx = context();
+    const owner = ctx?.owner ? encodeURIComponent(ctx.owner) : "";
+    const repo = ctx?.repository ? encodeURIComponent(ctx.repository) : "";
+    const query = owner && repo ? `?owner=${owner}&repo=${repo}` : "";
+
+    frame.src = chrome.runtime.getURL(`dashboard.html${query}`);
+    frame.setAttribute("allow", "clipboard-read; clipboard-write");
+
+    overlay.append(frame);
+    document.documentElement.append(overlay);
+
+    frame.addEventListener("load", () => {
+      sendContextToWorkspace(frame);
+    });
+  }
+
+  function minimizeWorkspaceOverlay() {
+    const overlay = document.getElementById("relay-ai-workspace-overlay");
+    if (overlay) {
+      overlay.classList.remove("relay-ai-workspace-visible");
+      overlay.classList.add("relay-ai-workspace-hidden");
+    }
+
+    const floatingPanel = document.getElementById("relay-ai-floating-panel");
+    if (floatingPanel) {
+      floatingPanel.style.display = "";
+      floatingPanel.classList.remove("relay-ai-floating-panel-hidden");
+      floatingPanel.classList.add("relay-ai-floating-panel-visible");
+      hideLauncher();
+    } else {
+      openRelay();
+    }
+  }
+
+  function closeWorkspaceOverlay() {
+    const overlay = document.getElementById("relay-ai-workspace-overlay");
+    if (overlay) {
+      overlay.remove();
+    }
+
+    const floatingPanel = document.getElementById("relay-ai-floating-panel");
+    if (floatingPanel) {
+      floatingPanel.style.display = "";
+      floatingPanel.classList.remove("relay-ai-floating-panel-hidden");
+      floatingPanel.classList.add("relay-ai-floating-panel-visible");
+      hideLauncher();
+    } else {
+      showLauncher();
+    }
+  }
+
+  function sendContextToWorkspace(frame = null) {
+    const target = frame || document.getElementById("relay-ai-workspace-frame");
+    if (!target) return;
+    try {
+      target.contentWindow.postMessage(
+        {
+          type: "relay-ai-host-context",
+          context: context()
+        },
+        "*"
+      );
+    } catch {
+      // Ignore failures
+    }
   }
 
 
@@ -726,25 +828,41 @@
         "relay-ai-floating-frame"
       );
 
-    if (!frame) {
-      return;
+    if (frame) {
+      try {
+        frame.contentWindow.postMessage(
+          {
+            type:
+              "relay-ai-host-context",
+            context:
+              latest
+          },
+          "*"
+        );
+      } catch {
+        // Ignore iframe messaging failures.
+      }
     }
 
-    try {
-
-      frame.contentWindow.postMessage(
-        {
-          type:
-            "relay-ai-host-context",
-
-          context:
-            latest
-        },
-        "*"
+    const wsFrame =
+      document.getElementById(
+        "relay-ai-workspace-frame"
       );
 
-    } catch {
-      // Ignore iframe messaging failures.
+    if (wsFrame) {
+      try {
+        wsFrame.contentWindow.postMessage(
+          {
+            type:
+              "relay-ai-host-context",
+            context:
+              latest
+          },
+          "*"
+        );
+      } catch {
+        // Ignore iframe messaging failures.
+      }
     }
   }
 
@@ -772,6 +890,15 @@
 
     if (panel) {
       panel.remove();
+    }
+
+    const overlay =
+      document.getElementById(
+        "relay-ai-workspace-overlay"
+      );
+
+    if (overlay) {
+      overlay.remove();
     }
 
 
@@ -926,7 +1053,7 @@
 
       /*
        * Only accept messages from
-       * the Relay iframe.
+       * the Relay iframe or workspace overlay iframe.
        */
 
       const frame =
@@ -934,11 +1061,20 @@
           "relay-ai-floating-frame"
         );
 
-      if (
-        !frame ||
-        event.source !==
-          frame.contentWindow
-      ) {
+      const wsFrame =
+        document.getElementById(
+          "relay-ai-workspace-frame"
+        );
+
+      const isFromPanel =
+        frame &&
+        event.source === frame.contentWindow;
+
+      const isFromWorkspace =
+        wsFrame &&
+        event.source === wsFrame.contentWindow;
+
+      if (!isFromPanel && !isFromWorkspace) {
         return;
       }
 
@@ -952,7 +1088,33 @@
 
 
       /*
-       * Panel asks for current context.
+       * Workspace requests minimize.
+       */
+
+      if (
+        message.type ===
+        "relay-ai-minimize-workspace"
+      ) {
+        minimizeWorkspaceOverlay();
+        return;
+      }
+
+
+      /*
+       * Workspace requests close.
+       */
+
+      if (
+        message.type ===
+        "relay-ai-close-workspace"
+      ) {
+        closeWorkspaceOverlay();
+        return;
+      }
+
+
+      /*
+       * Frame asks for current context.
        */
 
       if (
@@ -960,16 +1122,22 @@
         "relay-ai-request-context"
       ) {
 
-        sendContextToPanel(
-          frame
-        );
+        if (isFromPanel) {
+          sendContextToPanel(
+            frame
+          );
+        } else if (isFromWorkspace) {
+          sendContextToWorkspace(
+            wsFrame
+          );
+        }
 
         return;
       }
 
 
       /*
-       * Panel requests navigation.
+       * Frame requests navigation.
        */
 
       if (

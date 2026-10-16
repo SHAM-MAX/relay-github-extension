@@ -1997,21 +1997,52 @@ test('background handler opens full-page workspace tab on relay-ai-open-workspac
   assert.ok(env.createdTabs[0].url.includes('dashboard.html?owner=SHAM-MAX&repo=new-kanban-board'));
 });
 
-test('floating panel contains full workspace expand button that requests opening tab', async () => {
+test('floating panel contains expand button that expands workspace in-page without opening tab or navigating', async () => {
   const env = environment();
   env.run('context.js');
   env.run('content.js');
   await env.get('launcher-button').click();
   await settle();
+
+  const floatingPanel = walk(env.document).find(el => el.id === 'relay-ai-floating-panel');
+  assert.ok(floatingPanel, 'Floating panel must be present');
+  assert.ok(floatingPanel.classList.contains('relay-ai-floating-panel-visible'));
+
   const expandBtn = walk(env.document).find(el => el.id === 'relay-ai-floating-expand');
   assert.ok(expandBtn, 'Expand button must exist in panel shell');
   assert.equal(expandBtn.textContent, '⤢');
+
   await expandBtn.click();
   await settle();
+
+  // Verify regression: NO tabs created, NO navigation away from GitHub
+  assert.equal(env.createdTabs.length, 0, 'Must NOT call chrome.tabs.create on expand');
   const sentWorkspace = env.sent.find(msg => msg.type === 'relay-ai-open-workspace');
-  assert.ok(sentWorkspace, 'Clicking expand sends relay-ai-open-workspace message');
-  assert.equal(sentWorkspace.context.owner, 'SHAM-MAX');
-  assert.equal(sentWorkspace.context.repository, 'new-kanban-board');
+  assert.equal(sentWorkspace, undefined, 'Must NOT send relay-ai-open-workspace tab creation message');
+  assert.equal(env.location.href, base, 'Must stay on current GitHub repository page');
+
+  // Verify workspace overlay is created in the same document
+  const overlay = walk(env.document).find(el => el.id === 'relay-ai-workspace-overlay');
+  assert.ok(overlay, 'Workspace overlay must exist in the current GitHub page');
+  assert.ok(overlay.classList.contains('relay-ai-workspace-visible'));
+
+  const wsFrame = walk(env.document).find(el => el.id === 'relay-ai-workspace-frame');
+  assert.ok(wsFrame, 'Workspace iframe must exist');
+  assert.ok(wsFrame.src.includes('dashboard.html?owner=SHAM-MAX&repo=new-kanban-board'));
+
+  // Floating panel is hidden while overlay is open
+  assert.ok(floatingPanel.classList.contains('relay-ai-floating-panel-hidden'));
+
+  // Test minimizing the workspace overlay restores the floating panel
+  await env.window.emit('message', {
+    data: { type: 'relay-ai-minimize-workspace' },
+    source: wsFrame.contentWindow
+  });
+  await settle();
+
+  assert.ok(overlay.classList.contains('relay-ai-workspace-hidden'), 'Overlay should be hidden after minimize');
+  assert.ok(floatingPanel.classList.contains('relay-ai-floating-panel-visible'), 'Floating panel restored after minimize');
+  assert.equal(env.location.href, base, 'GitHub page remains intact');
 });
 
 test('dashboard workspace initializes repository context from URL params and switches views', async () => {
@@ -2198,6 +2229,139 @@ test('dashboard repository dropdown switch refreshes repository-scoped context',
   const githubLink = walk(env.document).find(el => el.id === 'relay-view-github-link');
   assert.equal(githubLink.href, 'https://github.com/octocat/Hello-World');
 });
+
+test('in-page workspace overlay preserves repository context, authenticated session, section switching, and close behavior', async () => {
+  const env = environment({
+    dashboard: true,
+    url: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/dashboard.html?owner=SHAM-MAX&repo=new-kanban-board'
+  });
+
+  const apiCalls = {
+    health: 0,
+    traceability: 0,
+    reports: 0
+  };
+
+  env.scope.RelayAIAssistant = {
+    checkAuth: async () => true,
+    getRepositories: async () => ({
+      ok: true,
+      json: async () => ({
+        repositories: [{ full_name: 'SHAM-MAX/new-kanban-board' }]
+      })
+    }),
+    getProjectHealth: async () => {
+      apiCalls.health++;
+      return {
+        ok: true,
+        json: async () => ({
+          health: { score: 94, overallStatus: 'healthy', summary: 'On track' }
+        })
+      };
+    },
+    getTraceability: async () => {
+      apiCalls.traceability++;
+      return {
+        ok: true,
+        json: async () => ({
+          traceability: [{
+            id: 'REQ-101',
+            title: 'In-Page Full Workspace',
+            verified: true,
+            workItems: [{ number: 50, title: 'Render overlay without new tab', state: 'closed' }]
+          }],
+          summary: { total: 1, verified: 1 }
+        })
+      };
+    },
+    getPmReports: async () => {
+      apiCalls.reports++;
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            executiveSummary: 'All milestones healthy.',
+            deliveryForecast: { estimatedCompletionDate: '2026-11-01', confidence: 'High' }
+          }
+        })
+      };
+    }
+  };
+
+  env.run('context.js');
+  env.run('dashboard.js');
+  await settle();
+
+  // 1. Repository context preservation
+  const repoSelect = walk(env.document).find(el => el.id === 'relay-repo-select');
+  assert.ok(repoSelect);
+  assert.equal(repoSelect.value, 'SHAM-MAX/new-kanban-board');
+
+  const githubLink = walk(env.document).find(el => el.id === 'relay-view-github-link');
+  assert.ok(githubLink);
+  assert.equal(githubLink.href, 'https://github.com/SHAM-MAX/new-kanban-board');
+
+  // 2. Authentication status display
+  const connText = walk(env.document).find(el => el.id === 'relay-connection-text');
+  assert.ok(connText);
+  assert.equal(connText.textContent, 'Relay Connected');
+
+  // 3. Navigation between workspace sections
+  const views = [
+    { navId: 'relay-nav-dashboard', viewId: 'relay-view-dashboard' },
+    { navId: 'relay-nav-chat', viewId: 'relay-view-chat' },
+    { navId: 'relay-nav-health', viewId: 'relay-view-health' },
+    { navId: 'relay-nav-traceability', viewId: 'relay-view-traceability' },
+    { navId: 'relay-nav-assignment', viewId: 'relay-view-assignment' },
+    { navId: 'relay-nav-reports', viewId: 'relay-view-reports' },
+    { navId: 'relay-nav-team', viewId: 'relay-view-team' },
+    { navId: 'relay-nav-risks', viewId: 'relay-view-risks' },
+    { navId: 'relay-nav-history', viewId: 'relay-view-history' },
+    { navId: 'relay-nav-settings', viewId: 'relay-view-settings' }
+  ];
+
+  for (const { navId, viewId } of views) {
+    const navBtn = walk(env.document).find(el => el.id === navId);
+    assert.ok(navBtn, `Nav button #${navId} must exist`);
+    await navBtn.click();
+    await settle();
+
+    const viewEl = walk(env.document).find(el => el.id === viewId);
+    assert.ok(viewEl, `View section #${viewId} must exist`);
+    assert.equal(viewEl.classList.contains('hidden'), false, `View #${viewId} should be visible`);
+  }
+
+  // 4. Traceability content check
+  const traceNavBtn = walk(env.document).find(el => el.id === 'relay-nav-traceability');
+  await traceNavBtn.click();
+  const traceRefreshBtn = walk(env.document).find(el => el.id === 'relay-traceability-refresh-btn');
+  if (traceRefreshBtn) {
+    await traceRefreshBtn.click();
+    await settle();
+  }
+  const reqTitle = walk(env.document).find(el => el.textContent && el.textContent.includes('REQ-101'));
+  assert.ok(reqTitle, 'Traceability matrix requirement rendered inside workspace');
+
+  // 5. Window controls in dashboard header
+  const minBtn = walk(env.document).find(el => el.id === 'relay-workspace-minimize-btn');
+  const closeBtn = walk(env.document).find(el => el.id === 'relay-workspace-close-btn');
+  assert.ok(minBtn, 'Minimize button must exist in topbar');
+  assert.ok(closeBtn, 'Close button must exist in topbar');
+
+  let postedMessage = null;
+  env.window.parent = {
+    postMessage: (msg) => { postedMessage = msg; }
+  };
+
+  await minBtn.click();
+  await settle();
+  assert.equal(postedMessage?.type, 'relay-ai-minimize-workspace');
+
+  await closeBtn.click();
+  await settle();
+  assert.equal(postedMessage?.type, 'relay-ai-close-workspace');
+});
+
 
 
 
