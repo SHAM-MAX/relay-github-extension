@@ -2043,6 +2043,21 @@ test('floating panel contains expand button that expands workspace in-page witho
   assert.ok(overlay.classList.contains('relay-ai-workspace-hidden'), 'Overlay should be hidden after minimize');
   assert.ok(floatingPanel.classList.contains('relay-ai-floating-panel-visible'), 'Floating panel restored after minimize');
   assert.equal(env.location.href, base, 'GitHub page remains intact');
+
+  // Test re-expanding and closing the workspace overlay completely
+  await expandBtn.click();
+  await settle();
+  assert.ok(overlay.classList.contains('relay-ai-workspace-visible'), 'Overlay becomes visible on re-expand');
+
+  await env.window.emit('message', {
+    data: { type: 'relay-ai-close-workspace' },
+    source: wsFrame.contentWindow
+  });
+  await settle();
+
+  const closedOverlay = walk(env.document).find(el => el.id === 'relay-ai-workspace-overlay');
+  assert.equal(closedOverlay, undefined, 'Close removes the workspace overlay element');
+  assert.equal(env.location.href, base, 'GitHub page remains intact on close');
 });
 
 test('dashboard workspace initializes repository context from URL params and switches views', async () => {
