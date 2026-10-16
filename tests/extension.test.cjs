@@ -1997,67 +1997,68 @@ test('background handler opens full-page workspace tab on relay-ai-open-workspac
   assert.ok(env.createdTabs[0].url.includes('dashboard.html?owner=SHAM-MAX&repo=new-kanban-board'));
 });
 
-test('floating panel contains expand button that expands workspace in-page without opening tab or navigating', async () => {
+test('launcher directly opens existing Relay AI chat panel as large inset floating window without intermediate compact panel or dashboard', async () => {
   const env = environment();
   env.run('context.js');
   env.run('content.js');
+
+  // Verify launcher is initially present
+  const launcher = env.get('launcher');
+  assert.ok(launcher, 'Relay launcher button must exist');
+
+  // Click floating launcher button
   await env.get('launcher-button').click();
   await settle();
 
+  // Launcher is hidden
+  assert.equal(launcher.style.display, 'none');
+
+  // Regressions: NO tabs created, NO URL changes, NO navigation
+  assert.equal(env.createdTabs.length, 0, 'Must NOT call chrome.tabs.create on open');
+  assert.equal(env.location.href, base, 'Must remain on current GitHub repository page');
+
+  // Verify large inset floating panel is rendered directly
   const floatingPanel = walk(env.document).find(el => el.id === 'relay-ai-floating-panel');
-  assert.ok(floatingPanel, 'Floating panel must be present');
+  assert.ok(floatingPanel, 'Floating panel must be directly opened');
   assert.ok(floatingPanel.classList.contains('relay-ai-floating-panel-visible'));
 
+  // Verify panel iframe loads existing panel.html (NOT dashboard.html)
+  const frame = walk(env.document).find(el => el.id === 'relay-ai-floating-frame');
+  assert.ok(frame, 'Floating frame must exist');
+  assert.ok(frame.src.includes('panel.html'), 'Frame MUST host panel.html, not dashboard.html');
+  assert.equal(frame.src.includes('dashboard.html'), false, 'Must NOT render dashboard.html');
+
+  // Verify controls: minimize and close exist on the floating shell
+  const minimizeBtn = walk(env.document).find(el => el.id === 'relay-ai-floating-minimize');
+  const closeBtn = walk(env.document).find(el => el.id === 'relay-ai-floating-close');
+  assert.ok(minimizeBtn, 'Minimize button must exist');
+  assert.ok(closeBtn, 'Close button must exist');
+  assert.equal(minimizeBtn.textContent, '—');
+  assert.equal(closeBtn.textContent, '×');
+
+  // No expand arrow requirement or intermediate compact step
   const expandBtn = walk(env.document).find(el => el.id === 'relay-ai-floating-expand');
-  assert.ok(expandBtn, 'Expand button must exist in panel shell');
-  assert.equal(expandBtn.textContent, '⤢');
+  assert.equal(expandBtn, undefined, 'Must not require expand arrow button');
 
-  await expandBtn.click();
+  // Test minimizing: collapses back to launcher
+  await minimizeBtn.click();
+  await env.tick(180);
+  assert.equal(walk(env.document).find(el => el.id === 'relay-ai-floating-panel'), undefined, 'Panel removed on minimize');
+  assert.equal(launcher.style.display, 'flex', 'Launcher restored on minimize');
+
+  // Reopen directly again
+  await env.get('launcher-button').click();
   await settle();
+  const reopenedPanel = walk(env.document).find(el => el.id === 'relay-ai-floating-panel');
+  assert.ok(reopenedPanel, 'Panel re-opens directly on button click');
+  const newCloseBtn = walk(env.document).find(el => el.id === 'relay-ai-floating-close');
 
-  // Verify regression: NO tabs created, NO navigation away from GitHub
-  assert.equal(env.createdTabs.length, 0, 'Must NOT call chrome.tabs.create on expand');
-  const sentWorkspace = env.sent.find(msg => msg.type === 'relay-ai-open-workspace');
-  assert.equal(sentWorkspace, undefined, 'Must NOT send relay-ai-open-workspace tab creation message');
-  assert.equal(env.location.href, base, 'Must stay on current GitHub repository page');
-
-  // Verify workspace overlay is created in the same document
-  const overlay = walk(env.document).find(el => el.id === 'relay-ai-workspace-overlay');
-  assert.ok(overlay, 'Workspace overlay must exist in the current GitHub page');
-  assert.ok(overlay.classList.contains('relay-ai-workspace-visible'));
-
-  const wsFrame = walk(env.document).find(el => el.id === 'relay-ai-workspace-frame');
-  assert.ok(wsFrame, 'Workspace iframe must exist');
-  assert.ok(wsFrame.src.includes('dashboard.html?owner=SHAM-MAX&repo=new-kanban-board'));
-
-  // Floating panel is hidden while overlay is open
-  assert.ok(floatingPanel.classList.contains('relay-ai-floating-panel-hidden'));
-
-  // Test minimizing the workspace overlay restores the floating panel
-  await env.window.emit('message', {
-    data: { type: 'relay-ai-minimize-workspace' },
-    source: wsFrame.contentWindow
-  });
-  await settle();
-
-  assert.ok(overlay.classList.contains('relay-ai-workspace-hidden'), 'Overlay should be hidden after minimize');
-  assert.ok(floatingPanel.classList.contains('relay-ai-floating-panel-visible'), 'Floating panel restored after minimize');
-  assert.equal(env.location.href, base, 'GitHub page remains intact');
-
-  // Test re-expanding and closing the workspace overlay completely
-  await expandBtn.click();
-  await settle();
-  assert.ok(overlay.classList.contains('relay-ai-workspace-visible'), 'Overlay becomes visible on re-expand');
-
-  await env.window.emit('message', {
-    data: { type: 'relay-ai-close-workspace' },
-    source: wsFrame.contentWindow
-  });
-  await settle();
-
-  const closedOverlay = walk(env.document).find(el => el.id === 'relay-ai-workspace-overlay');
-  assert.equal(closedOverlay, undefined, 'Close removes the workspace overlay element');
-  assert.equal(env.location.href, base, 'GitHub page remains intact on close');
+  // Test closing: dismisses Relay and leaves GitHub untouched
+  await newCloseBtn.click();
+  await env.tick(180);
+  assert.equal(walk(env.document).find(el => el.id === 'relay-ai-floating-panel'), undefined, 'Panel removed on close');
+  assert.equal(launcher.style.display, 'flex', 'Launcher restored after close');
+  assert.equal(env.location.href, base, 'GitHub page remains untouched');
 });
 
 test('dashboard workspace initializes repository context from URL params and switches views', async () => {

@@ -162,6 +162,10 @@
      LOAD PANEL
      ========================================================= */
 
+  /* =========================================================
+     LOAD LARGE INSET FLOATING RELAY PANEL
+     ========================================================= */
+
   function openRelay() {
 
     if (isAuthPage()) {
@@ -170,7 +174,7 @@
 
     /*
      * If Relay is already open,
-     * simply keep the launcher hidden.
+     * simply make sure it is visible and keep the launcher hidden.
      */
 
     const existing =
@@ -203,7 +207,7 @@
 
 
     /*
-     * Create the floating Relay shell.
+     * Create the large inset floating Relay shell.
      */
 
     const panel =
@@ -224,7 +228,7 @@
 
 
     /*
-     * Create iframe.
+     * Create iframe loading existing panel.html.
      */
 
     const frame =
@@ -253,7 +257,74 @@
 
 
     /*
-     * Parent close button.
+     * Outer header controls container.
+     */
+
+    const controls =
+      document.createElement(
+        "div"
+      );
+
+    controls.id =
+      "relay-ai-floating-controls";
+
+    controls.className =
+      "relay-ai-floating-controls";
+
+
+    /*
+     * Minimize button (collapses back to launcher).
+     */
+
+    const minimize =
+      document.createElement(
+        "button"
+      );
+
+    minimize.type =
+      "button";
+
+    minimize.id =
+      "relay-ai-floating-minimize";
+
+    minimize.className =
+      "relay-ai-floating-minimize";
+
+    minimize.textContent =
+      "—";
+
+    minimize.setAttribute(
+      "aria-label",
+      "Minimize Relay"
+    );
+
+    minimize.title =
+      "Minimize Relay";
+
+    minimize.addEventListener(
+      "click",
+      () => {
+        panel.classList.remove(
+          "relay-ai-floating-panel-visible"
+        );
+
+        panel.classList.add(
+          "relay-ai-floating-panel-hidden"
+        );
+
+        setTimeout(
+          () => {
+            panel.remove();
+            showLauncher();
+          },
+          180
+        );
+      }
+    );
+
+
+    /*
+     * Close button (dismisses Relay and restores launcher).
      */
 
     const close =
@@ -280,11 +351,6 @@
 
     close.title =
       "Close Relay";
-
-
-    /*
-     * Close Relay.
-     */
 
     close.addEventListener(
       "click",
@@ -318,49 +384,17 @@
 
 
     /*
-     * Full workspace expand button.
+     * Build controls & panel.
      */
 
-    const expand =
-      document.createElement(
-        "button"
-      );
-
-    expand.type =
-      "button";
-
-    expand.id =
-      "relay-ai-floating-expand";
-
-    expand.className =
-      "relay-ai-floating-expand";
-
-    expand.textContent =
-      "⤢";
-
-    expand.setAttribute(
-      "aria-label",
-      "Expand into Workspace"
+    controls.append(
+      minimize,
+      close
     );
-
-    expand.title =
-      "Expand into Workspace";
-
-    expand.addEventListener(
-      "click",
-      () => {
-        openWorkspaceOverlay();
-      }
-    );
-
-    /*
-     * Build panel.
-     */
 
     panel.append(
       frame,
-      expand,
-      close
+      controls
     );
 
     document.documentElement.append(
