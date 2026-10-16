@@ -1398,7 +1398,7 @@
       ui.repository.textContent =
         context?.repository
           ? `${context.owner}/${context.repository}`
-          : "Select repository";
+          : "SELECT REPOSITORY";
     }
 
 
