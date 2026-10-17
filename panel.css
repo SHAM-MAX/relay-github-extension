@@ -209,7 +209,7 @@ button:disabled { cursor: default; opacity: 0.45; }
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding: 40px 32px 20px;
+  padding: 26px 32px 18px;
   box-sizing: border-box;
   text-align: center;
   width: 100%;
@@ -221,7 +221,7 @@ button:disabled { cursor: default; opacity: 0.45; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
 }
 
 .relay-ai-eyebrow {
@@ -232,7 +232,7 @@ button:disabled { cursor: default; opacity: 0.45; }
   letter-spacing: 2.2px;
   line-height: 1;
   text-transform: uppercase;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .relay-ai-empty h2 {
@@ -246,7 +246,7 @@ button:disabled { cursor: default; opacity: 0.45; }
 }
 
 .relay-ai-hero-subtitle {
-  margin: 12px auto 0;
+  margin: 10px auto 0;
   max-width: 540px;
   color: #8da4c4;
   font-size: 14px;
