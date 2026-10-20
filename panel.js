@@ -1451,6 +1451,150 @@
       article.append(planContainer);
     }
 
+    if (message.assignmentRecommendations && message.assignmentRecommendations.recommendations) {
+      const recs = message.assignmentRecommendations.recommendations;
+      const recContainer = document.createElement("div");
+      recContainer.className = "relay-ai-issue-plan relay-ai-chat-recommendation-panel";
+      recContainer.style.marginTop = "10px";
+
+      const panelHeader = document.createElement("div");
+      panelHeader.style.display = "flex";
+      panelHeader.style.justifyContent = "space-between";
+      panelHeader.style.alignItems = "center";
+      panelHeader.style.marginBottom = "8px";
+
+      const recTitle = document.createElement("h4");
+      recTitle.className = "relay-ai-issue-plan-title";
+      recTitle.textContent = `Developer Recommendation for Issue #${message.assignmentRecommendations.issueNumber || ''}`;
+      panelHeader.append(recTitle);
+      recContainer.append(panelHeader);
+
+      if (recs.length === 0) {
+        const noCand = document.createElement("div");
+        noCand.className = "relay-ai-assignment-loading relay-ai-assignment-insufficient";
+        noCand.textContent = "No eligible repository assignees or recommendations found.";
+        recContainer.append(noCand);
+      } else {
+        const top = recs[0];
+        const spotlight = document.createElement("div");
+        spotlight.className = "relay-ai-top-recommendation";
+
+        const topHeader = document.createElement("div");
+        topHeader.className = "relay-ai-candidate-top";
+
+        const badge = document.createElement("span");
+        if (top.isOverloaded || (top.criteria?.workloadAndEffort?.score <= 15)) {
+          badge.className = "relay-ai-badge relay-ai-badge-danger";
+          badge.textContent = "⚠ Overloaded";
+        } else if (top.overallScore < 45 || top.fitLevel === 'weak' || top.isRecommended === false) {
+          badge.className = "relay-ai-badge relay-ai-badge-warning";
+          badge.textContent = "Weak Match";
+        } else {
+          badge.className = "relay-ai-badge relay-ai-badge-recommended";
+          badge.textContent = "★ Recommended";
+        }
+
+        const user = document.createElement("span");
+        user.className = "relay-ai-candidate-user";
+        user.textContent = `@${top.githubUsername}`;
+
+        const scoreBadge = document.createElement("span");
+        scoreBadge.className = "relay-ai-candidate-score-badge";
+        scoreBadge.textContent = `${top.overallScore}% fit (Evidence: ${top.confidence})`;
+
+        topHeader.append(badge, user, scoreBadge);
+
+        const rat = document.createElement("p");
+        rat.className = "relay-ai-candidate-rationale";
+        rat.textContent = top.rationale || "";
+
+        spotlight.append(topHeader, rat);
+        recContainer.append(spotlight);
+
+        // Render candidate cards with criteria breakdown and warnings
+        const listDiv = document.createElement("div");
+        listDiv.className = "relay-ai-assignment-candidates";
+        listDiv.style.marginTop = "8px";
+
+        recs.slice(0, 3).forEach(candidate => {
+          const cCard = document.createElement("div");
+          cCard.className = "relay-ai-candidate-card";
+
+          const cTop = document.createElement("div");
+          cTop.className = "relay-ai-candidate-top";
+
+          const cUser = document.createElement("span");
+          cUser.className = "relay-ai-candidate-user";
+          cUser.textContent = `@${candidate.githubUsername}`;
+
+          const cScore = document.createElement("span");
+          cScore.className = "relay-ai-candidate-score-badge";
+          cScore.textContent = `${candidate.overallScore}% fit (Evidence: ${candidate.confidence})`;
+          cTop.append(cUser, cScore);
+
+          const cRat = document.createElement("p");
+          cRat.className = "relay-ai-candidate-rationale";
+          cRat.textContent = candidate.rationale || "";
+
+          cCard.append(cTop, cRat);
+
+          if (candidate.missingDataWarnings && candidate.missingDataWarnings.length > 0) {
+            const wDiv = document.createElement("div");
+            wDiv.className = "relay-ai-assignment-warnings";
+            for (const w of candidate.missingDataWarnings) {
+              const wElem = document.createElement("div");
+              wElem.className = "relay-ai-assignment-warning";
+              wElem.textContent = "ℹ " + w;
+              wDiv.append(wElem);
+            }
+            cCard.append(wDiv);
+          }
+
+          // Breakdown
+          const bToggle = document.createElement("button");
+          bToggle.type = "button";
+          bToggle.className = "relay-ai-candidate-breakdown-toggle";
+          bToggle.textContent = "View Criteria Breakdown ▼";
+
+          const bDiv = document.createElement("div");
+          bDiv.className = "relay-ai-candidate-breakdown";
+          bDiv.hidden = true;
+
+          const cCrit = candidate.criteria || {};
+          const bItems = [
+            { label: 'Skills (30%)', val: cCrit.technicalSkills?.score },
+            { label: 'Workload (25%)', val: cCrit.workloadAndEffort?.score },
+            { label: 'Familiarity (20%)', val: cCrit.repositoryFamiliarity?.score },
+            { label: 'Availability (15%)', val: cCrit.availabilityAndDeadlines?.score },
+            { label: 'Growth/Fairness (10%)', val: cCrit.growthAndFairness?.score }
+          ];
+          for (const it of bItems) {
+            const bItem = document.createElement("div");
+            bItem.className = "relay-ai-breakdown-item";
+            const bLabel = document.createElement("span");
+            bLabel.textContent = `${it.label}: `;
+            const bStrong = document.createElement("strong");
+            bStrong.textContent = `${it.val != null ? it.val : '-'}%`;
+            bItem.append(bLabel, bStrong);
+            bDiv.append(bItem);
+          }
+
+          bToggle.addEventListener("click", (e) => {
+            e.stopPropagation();
+            bDiv.hidden = !bDiv.hidden;
+            bToggle.textContent = bDiv.hidden ? "View Criteria Breakdown ▼" : "Hide Criteria Breakdown ▲";
+          });
+
+          cCard.append(bToggle, bDiv);
+          listDiv.append(cCard);
+        });
+
+        recContainer.append(listDiv);
+      }
+
+      article.append(recContainer);
+    }
+
     ui.messages.append(article);
   }
 
@@ -2578,6 +2722,9 @@
 
             issuePlan:
               response.issuePlan,
+
+            assignmentRecommendations:
+              response.assignmentRecommendations || null,
 
             context:
               messageContext,

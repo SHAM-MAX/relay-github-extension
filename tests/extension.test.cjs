@@ -2611,6 +2611,107 @@ test('floating workspace reproduces reference design: hero eyebrow, 6 functional
   assert.ok(statusDot, 'Connection status indicator dot must remain');
 });
 
+test('regression: chat message with assignment recommendations displays real recommendation spotlight, breakdown, and warnings', async () => {
+  const env = await panel({
+    checkAuth: async () => true,
+    url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/issues/10'
+  });
+
+  env.window.postMessage({
+    type: 'relay-ai-host-context',
+    context: {
+      host: 'github.com',
+      owner: 'SHAM-MAX',
+      repository: 'GitHub-Kanban-Practice',
+      url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/issues/10',
+      pageType: 'issue',
+      issueNumber: 10,
+      pullRequestNumber: null,
+      branch: null
+    }
+  }, '*');
+  await settle();
+
+  // Simulate user sending recommendation prompt
+  env.get('input').value = 'Analyze GitHub issue #10 in this repository and recommend the best eligible developer based on demonstrated skills, repository familiarity, current workload, and declared availability. Show the evidence and score breakdown. Do not assign the issue yet.';
+  const sending = env.get('form').emit('submit');
+  await settle();
+
+  // Assistant resolves with real recommendation payload
+  env.resolveAI({
+    reply: '### Developer Assignment Recommendation for Issue #10\n\nTop Recommendation: @lead-dev (84% fit). 1. Technical Skills & Experience (30%): 90%. 2. Current Workload & Estimated Effort (25%): 80%. 3. Repository Familiarity (20%): 85%. 4. Availability & Capacity (15%): 80%. 5. Growth & Fairness (10%): 80%. Safeguard: no issue was assigned.',
+    assignmentRecommendations: {
+      issueNumber: 10,
+      task: { title: 'Optimize indexing', description: 'DB queries' },
+      recommendations: [
+        {
+          githubUsername: 'lead-dev',
+          overallScore: 84,
+          confidence: 'High',
+          isRecommended: true,
+          rationale: 'Strong skills match and high repository familiarity.',
+          criteria: {
+            technicalSkills: { score: 90, weight: '30%' },
+            workloadAndEffort: { score: 80, weight: '25%' },
+            repositoryFamiliarity: { score: 85, weight: '20%' },
+            availabilityAndDeadlines: { score: 80, weight: '15%' },
+            growthAndFairness: { score: 80, weight: '10%' }
+          },
+          missingDataWarnings: ['Declared skills partially matched']
+        }
+      ],
+      policy: { mode: 'recommendation' },
+      warnings: []
+    },
+    context: {
+      repository: 'SHAM-MAX/GitHub-Kanban-Practice',
+      pageType: 'issue'
+    },
+    model: 'deterministic-assignment-engine'
+  });
+  await sending;
+  await settle();
+
+  // Verify chat message text contains real 5 criteria weights
+  const messageBodies = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-message-body'));
+  const assistantMessageBody = messageBodies[messageBodies.length - 1];
+  assert.ok(assistantMessageBody);
+  assert.match(assistantMessageBody.textContent, /Technical Skills & Experience \(30%\)/);
+  assert.match(assistantMessageBody.textContent, /Current Workload & Estimated Effort \(25%\)/);
+  assert.match(assistantMessageBody.textContent, /Repository Familiarity \(20%\)/);
+  assert.match(assistantMessageBody.textContent, /Availability & Capacity \(15%\)/);
+  assert.match(assistantMessageBody.textContent, /Growth & Fairness \(10%\)/);
+  assert.match(assistantMessageBody.textContent, /no issue was assigned/);
+
+  // Verify recommendation spotlight and candidate cards rendered in UI
+  const recPanel = walk(env.get('messages')).find(el => el.classList && el.classList.contains('relay-ai-chat-recommendation-panel'));
+  assert.ok(recPanel, 'Recommendation panel must be rendered in chat');
+
+  const spotlight = walk(recPanel).find(el => el.classList && el.classList.contains('relay-ai-top-recommendation'));
+  assert.ok(spotlight, 'Top recommendation spotlight must be rendered');
+  assert.ok(spotlight.textContent.includes('@lead-dev'));
+  assert.ok(spotlight.textContent.includes('84% fit'));
+
+  const candidateCards = walk(recPanel).filter(el => el.classList && el.classList.contains('relay-ai-candidate-card'));
+  assert.equal(candidateCards.length, 1);
+
+  const breakdownToggle = walk(candidateCards[0]).find(el => el.classList && el.classList.contains('relay-ai-candidate-breakdown-toggle'));
+  assert.ok(breakdownToggle, 'Criteria breakdown toggle must be present');
+
+  const breakdownDiv = walk(candidateCards[0]).find(el => el.classList && el.classList.contains('relay-ai-candidate-breakdown'));
+  assert.ok(breakdownDiv, 'Criteria breakdown container must exist');
+  assert.ok(breakdownDiv.textContent.includes('Skills (30%): 90%'));
+  assert.ok(breakdownDiv.textContent.includes('Workload (25%): 80%'));
+  assert.ok(breakdownDiv.textContent.includes('Familiarity (20%): 85%'));
+  assert.ok(breakdownDiv.textContent.includes('Availability (15%): 80%'));
+  assert.ok(breakdownDiv.textContent.includes('Growth/Fairness (10%): 80%'));
+
+  // Toggle breakdown
+  await breakdownToggle.click();
+  await settle();
+  assert.equal(breakdownDiv.hidden, false, 'Breakdown should be visible after click');
+});
+
 
 
 

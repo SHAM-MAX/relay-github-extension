@@ -169,7 +169,13 @@
       if (typeof data?.reply !== 'string' || !data.reply.trim() || data.reply.length > 16000 || data.context?.repository !== expectedRepo || data.context?.pageType !== context.pageType) {
         throw failure('Relay returned an invalid assistant response. Please retry.', 'INVALID_RESPONSE');
       }
-      return { reply: data.reply, context: data.context, model: data.model, issuePlan: data.issuePlan };
+      return {
+        reply: data.reply,
+        context: data.context,
+        model: data.model,
+        issuePlan: data.issuePlan,
+        assignmentRecommendations: data.assignmentRecommendations || null
+      };
     } catch (error) {
       if (controller.signal.aborted || error?.name === 'AbortError') throw failure(ERRORS.AI_TIMEOUT, 'AI_TIMEOUT');
       if (typeof error?.code === 'string' && (Object.hasOwn(ERRORS, error.code) || ['INVALID_RESPONSE','BACKEND_ERROR'].includes(error.code))) throw error;
