@@ -2712,6 +2712,107 @@ test('regression: chat message with assignment recommendations displays real rec
   assert.equal(breakdownDiv.hidden, false, 'Breakdown should be visible after click');
 });
 
+test('dashboard developer profile modal saves and reloads canonical fields against selected repository', async () => {
+  let savedPayload = null;
+  let persistedProfile = {
+    declared_skills: ['javascript', 'react', 'python', 'fastapi'],
+    weekly_capacity_hours: 20,
+    max_concurrent_tasks: 3,
+    is_available: true,
+    current_focus: 'backend API'
+  };
+
+  const env = environment({
+    dashboard: true,
+    url: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/dashboard.html?owner=SHAM-MAX&repo=GitHub-Kanban-Practice'
+  });
+
+  env.scope.RelayAIAssistant = {
+    checkAuth: async () => true,
+    getRepositories: async () => ({ ok: true, json: async () => ({ repositories: [{ full_name: 'SHAM-MAX/GitHub-Kanban-Practice' }] }) }),
+    getProjectHealth: async () => ({ ok: true, json: async () => ({ health: null }) }),
+    getTraceability: async () => ({ ok: true, json: async () => ({ traceability: [], summary: {} }) }),
+    getPmReports: async () => ({ ok: true, json: async () => ({ data: {} }) }),
+    getDeveloperProfile: async (ctx) => {
+      assert.equal(ctx.owner, 'SHAM-MAX');
+      assert.equal(ctx.repository, 'GitHub-Kanban-Practice');
+      return {
+        ok: true,
+        json: async () => ({ profile: persistedProfile })
+      };
+    },
+    upsertDeveloperProfile: async (data, ctx) => {
+      assert.equal(ctx.owner, 'SHAM-MAX');
+      assert.equal(ctx.repository, 'GitHub-Kanban-Practice');
+      savedPayload = data;
+      persistedProfile = {
+        declared_skills: data.declaredSkills || data.skills,
+        weekly_capacity_hours: data.weeklyCapacityHours || data.weeklyHoursCapacity,
+        max_concurrent_tasks: data.maxConcurrentTasks,
+        is_available: data.isAvailable,
+        current_focus: data.currentFocus
+      };
+      return {
+        ok: true,
+        json: async () => ({ profile: persistedProfile })
+      };
+    }
+  };
+
+  env.run('dashboard.js');
+  await settle();
+
+  // Open profile modal from action button
+  const editProfileBtn = walk(env.document).find(el => el.id === 'relay-action-edit-profile');
+  assert.ok(editProfileBtn, 'Edit Profile button must exist');
+  await editProfileBtn.click();
+  await settle();
+
+  const modal = walk(env.document).find(el => el.id === 'relay-profile-modal-overlay');
+  assert.ok(modal);
+  assert.equal(modal.classList.contains('hidden'), false);
+
+  // Check preloaded canonical values
+  const skillsInput = walk(env.document).find(el => el.id === 'relay-modal-skills');
+  const capInput = walk(env.document).find(el => el.id === 'relay-modal-capacity');
+  const tasksInput = walk(env.document).find(el => el.id === 'relay-modal-maxtasks');
+  const availSelect = walk(env.document).find(el => el.id === 'relay-modal-availability');
+  const focusInput = walk(env.document).find(el => el.id === 'relay-modal-focus');
+
+  assert.equal(skillsInput.value, 'javascript, react, python, fastapi');
+  assert.equal(capInput.value, '20');
+  assert.equal(tasksInput.value, '3');
+  assert.equal(availSelect.value, 'available');
+  assert.equal(focusInput.value, 'backend API');
+
+  // Modify and save
+  skillsInput.value = 'javascript, react, python, fastapi, postgresql';
+  capInput.value = '25';
+  focusInput.value = 'backend API & optimization';
+
+  const saveBtn = walk(env.document).find(el => el.id === 'relay-modal-profile-save');
+  assert.ok(saveBtn);
+  await saveBtn.click();
+  await settle();
+
+  assert.ok(savedPayload);
+  assert.deepEqual(Array.from(savedPayload.declaredSkills), ['javascript', 'react', 'python', 'fastapi', 'postgresql']);
+  assert.equal(savedPayload.weeklyCapacityHours, 25);
+  assert.equal(savedPayload.maxConcurrentTasks, 3);
+  assert.equal(savedPayload.isAvailable, true);
+  assert.equal(savedPayload.currentFocus, 'backend API & optimization');
+  assert.equal(modal.classList.contains('hidden'), true);
+
+  // Reopen and verify persisted values reloaded
+  await editProfileBtn.click();
+  await settle();
+
+  assert.equal(skillsInput.value, 'javascript, react, python, fastapi, postgresql');
+  assert.equal(capInput.value, '25');
+  assert.equal(focusInput.value, 'backend API & optimization');
+});
+
+
 
 
 

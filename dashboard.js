@@ -79,6 +79,7 @@
     modalCapacity: $("relay-modal-capacity"),
     modalMaxTasks: $("relay-modal-maxtasks"),
     modalAvailability: $("relay-modal-availability"),
+    modalFocus: $("relay-modal-focus"),
     modalStatus: $("relay-modal-profile-status"),
     // Settings elements
     settingsAuthStatus: $("relay-settings-auth-status"),
@@ -279,7 +280,7 @@
 
     const profileBtn = $("relay-action-edit-profile");
     if (profileBtn) {
-      profileBtn.addEventListener("click", () => openProfileModal());
+      profileBtn.addEventListener("click", () => { return openProfileModal(); });
     }
 
     const assignProfileBtn = $("relay-assignment-profile-btn");
@@ -1323,10 +1324,20 @@
         if (res.ok) {
           const data = await res.json();
           const p = data.profile || {};
-          if (ui.modalSkills) ui.modalSkills.value = (p.skills || []).join(", ");
-          if (ui.modalCapacity) ui.modalCapacity.value = p.weeklyHoursCapacity || 40;
-          if (ui.modalMaxTasks) ui.modalMaxTasks.value = p.maxConcurrentTasks || 3;
-          if (ui.modalAvailability) ui.modalAvailability.value = p.availabilityStatus || "available";
+          const skillsList = p.declared_skills || p.skills || [];
+          if (ui.modalSkills) ui.modalSkills.value = skillsList.join(", ");
+          if (ui.modalCapacity) ui.modalCapacity.value = String(p.weekly_capacity_hours ?? p.weeklyHoursCapacity ?? 40);
+          if (ui.modalMaxTasks) ui.modalMaxTasks.value = String(p.max_concurrent_tasks ?? p.maxConcurrentTasks ?? 3);
+          if (ui.modalAvailability) {
+            if (typeof p.is_available === "boolean") {
+              ui.modalAvailability.value = p.is_available ? "available" : "unavailable";
+            } else if (p.availabilityStatus) {
+              ui.modalAvailability.value = p.availabilityStatus;
+            } else {
+              ui.modalAvailability.value = "available";
+            }
+          }
+          if (ui.modalFocus) ui.modalFocus.value = p.current_focus || p.currentFocus || "";
         }
       } catch (_) {}
     }
@@ -1344,13 +1355,19 @@
     const skills = ui.modalSkills ? ui.modalSkills.value.split(",").map(s => s.trim()).filter(Boolean) : [];
     const weeklyHoursCapacity = ui.modalCapacity ? Number(ui.modalCapacity.value) || 40 : 40;
     const maxConcurrentTasks = ui.modalMaxTasks ? Number(ui.modalMaxTasks.value) || 3 : 3;
-    const availabilityStatus = ui.modalAvailability ? ui.modalAvailability.value : "available";
+    const availabilityVal = ui.modalAvailability ? ui.modalAvailability.value : "available";
+    const isAvailable = availabilityVal === "available";
+    const currentFocus = ui.modalFocus ? ui.modalFocus.value.trim() : "";
 
     const payload = {
+      declaredSkills: skills,
       skills,
+      weeklyCapacityHours: weeklyHoursCapacity,
       weeklyHoursCapacity,
       maxConcurrentTasks,
-      availabilityStatus
+      isAvailable,
+      availabilityStatus: availabilityVal,
+      currentFocus: currentFocus || null
     };
 
     try {
@@ -1388,9 +1405,12 @@
     try {
       if (globalThis.RelayAIAssistant?.upsertDeveloperProfile) {
         await RelayAIAssistant.upsertDeveloperProfile({
+          declaredSkills: skills,
           skills,
+          weeklyCapacityHours: weeklyHoursCapacity,
           weeklyHoursCapacity,
-          maxConcurrentTasks
+          maxConcurrentTasks,
+          isAvailable: true
         }, state.currentContext);
       }
       if (ui.settingsProfileMsg) {
@@ -1485,7 +1505,8 @@
         breakdown.style.color = "var(--text-secondary)";
         const skillsScore = r.criteria?.technicalSkills?.score || 0;
         const workScore = r.criteria?.workloadAndEffort?.score || 0;
-        breakdown.textContent = `Skills Alignment: ${skillsScore}% · Workload Capacity: ${workScore}% · Familiarity: ${r.criteria?.domainFamiliarity?.score || 0}%`;
+        const famScore = r.criteria?.repositoryFamiliarity?.score || r.criteria?.domainFamiliarity?.score || 0;
+        breakdown.textContent = `Skills Alignment: ${skillsScore}% · Workload Capacity: ${workScore}% · Familiarity: ${famScore}%`;
 
         card.append(top, breakdown);
         ui.assignResults.append(card);

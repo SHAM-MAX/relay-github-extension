@@ -177,7 +177,7 @@ function environment({ panel = false, dashboard = false, url = 'https://github.c
     }
   };
   const scope = vm.createContext({
-    URL, console, document, window, location, chrome, fetch,
+    URL, URLSearchParams, console, document, window, location, chrome, fetch,
     setTimeout: (callback, delay) => { const id = nextTimer++; timers.set(id, { callback, delay }); return id; },
     clearTimeout: id => timers.delete(id),
     setInterval: callback => { intervals.push(callback); return intervals.length; },
