@@ -1547,6 +1547,142 @@ test('developer profile opens from settings gear menu, saves, and reloads persis
   assert.ok(reloadedCap);
 });
 
+test('assignment policy modal opens from gear menu and saves configured mode and threshold', async () => {
+  let updatedPolicy = null;
+  const env = await panel({
+    checkAuth: async () => true,
+    url: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice'
+  });
+
+  env.window.postMessage({
+    type: 'relay-ai-host-context',
+    context: {
+      owner: 'SHAM-MAX',
+      repository: 'GitHub-Kanban-Practice',
+      pageType: 'repository'
+    }
+  }, '*');
+  await settle();
+
+  env.scope.RelayAIAssistant.getAssignmentPolicy = async (ctx) => ({
+    ok: true,
+    json: async () => ({
+      policy: {
+        mode: 'recommendation',
+        min_confidence_score: 70,
+        enforce_capacity_limits: true,
+        allow_growth_allocation: true
+      }
+    })
+  });
+
+  env.scope.RelayAIAssistant.updateAssignmentPolicy = async (data, ctx) => {
+    updatedPolicy = data;
+    return {
+      ok: true,
+      json: async () => ({ policy: data })
+    };
+  };
+
+  // Open gear menu and click Assignment Policy
+  await env.get('gear').click();
+  await settle();
+  const gearPolicyBtn = env.get('gear-policy');
+  assert.ok(gearPolicyBtn, 'Assignment Policy button must exist in gear menu');
+  await gearPolicyBtn.click();
+  await settle();
+
+  const modal = walk(env.document).find(el => el.classList && el.classList.contains('relay-ai-profile-modal'));
+  assert.ok(modal);
+  const mTitle = walk(modal).find(el => el.tagName === 'H4');
+  assert.match(mTitle.textContent, /Automatic Assignment Policy/);
+
+  // Switch to automatic mode and update threshold to 85
+  const modeSelect = walk(modal).find(el => el.tagName === 'SELECT');
+  assert.ok(modeSelect);
+  modeSelect.value = 'automatic';
+
+  const confInput = walk(modal).find(el => el.type === 'number');
+  assert.ok(confInput);
+  confInput.value = '85';
+
+  const saveBtn = walk(modal).find(el => el.textContent === 'Save Policy');
+  assert.ok(saveBtn);
+  await saveBtn.click();
+  await settle();
+
+  assert.ok(updatedPolicy);
+  assert.equal(updatedPolicy.mode, 'automatic');
+  assert.equal(updatedPolicy.minConfidenceScore, 85);
+  assert.equal(updatedPolicy.enforceCapacityLimits, true);
+});
+
+test('automatic assignment policy executes assignment for qualified candidates and holds overloaded candidates safely', async () => {
+  const env = await panel({
+    checkAuth: async () => true,
+    url: 'https://github.com/SHAM-MAX/new-kanban-board'
+  });
+
+  // Supply repository context
+  env.window.postMessage({
+    type: 'relay-ai-host-context',
+    context: { owner: 'SHAM-MAX', repository: 'new-kanban-board', pageType: 'repository' }
+  }, '*');
+  await settle();
+
+  // Test Case A: Qualified candidate with automatic policy -> Auto-Assigned
+  env.scope.RelayAIAssistant.getAssignmentRecommendations = async () => ({
+    ok: true,
+    json: async () => ({
+      policy: { mode: 'automatic', min_confidence_score: 75, enforce_capacity_limits: true },
+      recommendations: [
+        {
+          githubUsername: 'qualified_dev',
+          overallScore: 88,
+          confidence: 'High',
+          isRecommended: true,
+          criteria: {
+            technicalSkills: { score: 90 },
+            workloadAndEffort: { score: 85 },
+            repositoryFamiliarity: { score: 80 },
+            availabilityAndDeadlines: { score: 100 },
+            growthAndFairness: { score: 80 }
+          },
+          missingDataWarnings: []
+        }
+      ]
+    })
+  });
+
+  env.get('input').value = 'Task auto qualified';
+  const sendingA = env.get('form').emit('submit');
+  await settle();
+
+  const planA = {
+    issues: [{ id: 'task-auto-1', title: 'Implement feature A', body: 'Feature A specs' }]
+  };
+  env.resolveAI({
+    reply: 'Plan',
+    issuePlan: planA,
+    context: { owner: 'SHAM-MAX', repository: 'new-kanban-board' }
+  });
+  await sendingA;
+  await settle();
+
+  // Plan issue should be auto-assigned without requiring manual PM click
+  assert.equal(planA.issues[0].assignee, 'qualified_dev');
+  assert.equal(planA.issues[0]._autoAssigned, true);
+
+  // Cards show execution preview
+  const cards = walk(env.get('messages')).filter(el => el.classList && el.classList.contains('relay-ai-issue-card'));
+  assert.ok(cards.length >= 1);
+  const preview = walk(cards[0]).find(el => el.classList && el.classList.contains('relay-ai-assignment-preview'));
+  assert.ok(preview, 'Pre-execution assignment preview must be rendered');
+  assert.match(preview.textContent, /@qualified_dev/);
+  assert.match(preview.textContent, /Change: Assign on GitHub issue creation/);
+});
+
+
 test('Project Health dashboard renders overall status, critical issues, risks, and next actions', async () => {
   const mockHealth = {
     overallStatus: 'at_risk',

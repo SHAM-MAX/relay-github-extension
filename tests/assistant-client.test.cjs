@@ -290,5 +290,69 @@ test('getPmReports requests reports endpoint with context and credentials', asyn
   assert.equal(data.reports.deliveryForecast.confidence, 'high');
 });
 
+test('getAssignmentPolicy and updateAssignmentPolicy interact with backend assignment policy endpoint', async () => {
+  const calls = [];
+  const mockFetch = async (url, opts) => {
+    calls.push({ url, opts });
+    if (opts.method === 'GET') {
+      return response(200, { policy: { mode: 'recommendation', min_confidence_score: 75, enforce_capacity_limits: true } });
+    }
+    return response(200, { policy: { ...JSON.parse(opts.body) } });
+  };
+
+  const context = { owner: 'SHAM-MAX', repository: 'GitHub-Kanban-Practice' };
+
+  // GET
+  const getRes = await client.getAssignmentPolicy(context, { fetchImpl: mockFetch });
+  assert.equal(calls[0].url, 'https://relay-standalone-backend.onrender.com/api/pm/assignment/policy?owner=SHAM-MAX&repo=GitHub-Kanban-Practice');
+  assert.equal(calls[0].opts.method, 'GET');
+  assert.equal(calls[0].opts.credentials, 'include');
+  const getData = await getRes.json();
+  assert.equal(getData.policy.mode, 'recommendation');
+  assert.equal(getData.policy.min_confidence_score, 75);
+
+  // PUT
+  const putRes = await client.updateAssignmentPolicy({ mode: 'automatic', minConfidenceScore: 80 }, context, { fetchImpl: mockFetch });
+  assert.equal(calls[1].url, 'https://relay-standalone-backend.onrender.com/api/pm/assignment/policy?owner=SHAM-MAX&repo=GitHub-Kanban-Practice');
+  assert.equal(calls[1].opts.method, 'PUT');
+  assert.equal(calls[1].opts.credentials, 'include');
+  const putData = await putRes.json();
+  assert.equal(putData.policy.mode, 'automatic');
+  assert.equal(putData.policy.minConfidenceScore, 80);
+});
+
+test('assignIssue calls backend assignment assign endpoint with issue details and mode', async () => {
+  let reqUrl = null;
+  let reqOptions = null;
+  const mockFetch = async (url, opts) => {
+    reqUrl = url;
+    reqOptions = opts;
+    return response(200, {
+      success: true,
+      issueNumber: 42,
+      assignee: 'alice',
+      assigned: true,
+      githubUrl: 'https://github.com/SHAM-MAX/GitHub-Kanban-Practice/issues/42'
+    });
+  };
+
+  const context = { owner: 'SHAM-MAX', repository: 'GitHub-Kanban-Practice' };
+  const res = await client.assignIssue(42, 'alice', context, { mode: 'automatic', fetchImpl: mockFetch });
+
+  assert.equal(reqUrl, 'https://relay-standalone-backend.onrender.com/api/pm/assignment/assign?owner=SHAM-MAX&repo=GitHub-Kanban-Practice');
+  assert.equal(reqOptions.method, 'POST');
+  assert.equal(reqOptions.credentials, 'include');
+  const body = JSON.parse(reqOptions.body);
+  assert.equal(body.issueNumber, 42);
+  assert.equal(body.assignee, 'alice');
+  assert.equal(body.mode, 'automatic');
+
+  const data = await res.json();
+  assert.equal(data.success, true);
+  assert.equal(data.assigned, true);
+  assert.equal(data.assignee, 'alice');
+});
+
+
 
 

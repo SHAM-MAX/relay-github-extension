@@ -53,6 +53,7 @@
     "gear-history",
     "gear-models",
     "gear-profile",
+    "gear-policy",
     "gear-health",
     "gear-prefs",
     "gear-about",
@@ -444,6 +445,24 @@
             createdStatus.textContent = "Created in GitHub";
             createdStatus.style.marginTop = "6px";
 
+            // If an assignee was assigned or failed assignment, display confirmation & issue link
+            if (issue._assignedUser) {
+              const assigneeConfirm = document.createElement("div");
+              assigneeConfirm.className = "relay-ai-assignment-confirmed";
+              assigneeConfirm.style.fontSize = "11px";
+              assigneeConfirm.style.color = "#3fb950";
+              assigneeConfirm.style.marginTop = "4px";
+              assigneeConfirm.textContent = `Assigned to @${issue._assignedUser}`;
+              createdStatus.append(assigneeConfirm);
+            } else if (issue._assignmentWarning) {
+              const assigneeWarn = document.createElement("div");
+              assigneeWarn.className = "relay-ai-assignment-warning";
+              assigneeWarn.style.fontSize = "11px";
+              assigneeWarn.style.marginTop = "4px";
+              assigneeWarn.textContent = `⚠ ${issue._assignmentWarning}`;
+              createdStatus.append(assigneeWarn);
+            }
+
             card.append(titleLink, createdStatus);
             return;
           }
@@ -765,6 +784,34 @@
               if (res.ok && data?.recommendations) {
                 issue._recommendations = data.recommendations;
                 issue._recommendationWarnings = data.warnings || [];
+                const pol = data.policy || null;
+
+                // Automatic mode safeguard check:
+                // If PM enabled automatic mode and issue has no assignee selected yet,
+                // check if the top candidate meets the configured confidence threshold and is not overloaded/unavailable.
+                if (pol && pol.mode === 'automatic' && !issue.assignee && data.recommendations.length > 0) {
+                  const top = data.recommendations[0];
+                  const minScore = pol.min_confidence_score != null ? pol.min_confidence_score : 70;
+                  const isTopOverloaded = top.isOverloaded || (top.criteria?.workloadAndEffort?.score <= 15) || (top.missingDataWarnings && top.missingDataWarnings.some(w => w.includes('capacity')));
+                  const isAvailable = top.criteria?.availabilityAndDeadlines?.score > 0;
+                  const isScoreSufficient = top.overallScore >= minScore;
+
+                  if (isScoreSufficient && !isTopOverloaded && isAvailable && top.isRecommended !== false) {
+                    issue.assignee = top.githubUsername;
+                    issue.assignees = [top.githubUsername];
+                    issue._autoAssigned = true;
+                  } else {
+                    // Safe hold for PM review
+                    issue._heldForReview = true;
+                    issue._heldReason = isTopOverloaded ? "Candidate overloaded" : (!isScoreSufficient ? `Score (${top.overallScore}%) below threshold (${minScore}%)` : "Insufficient confidence");
+                  }
+                  if (typeof saveConversation === "function") saveConversation();
+                  if (issue._autoAssigned) {
+                    refreshCard();
+                    return;
+                  }
+                }
+
                 renderRecommendationsUI(data.recommendations, data.warnings || []);
               } else {
                 const warnMsg = data?.error || (res.status === 403 ? "GitHub permissions or Relay login required" : `Could not load recommendations (${res.status || 'Network Error'})`);
@@ -866,6 +913,21 @@
             topScoreBadge.className = "relay-ai-candidate-score-badge";
             topScoreBadge.title = `Fit Score: ${topCandidate.overallScore}%. Evidence completeness: ${topCandidate.confidence}`;
             topScoreBadge.textContent = `${topCandidate.overallScore}% fit (Evidence: ${topCandidate.confidence})`;
+
+            if (issue._autoAssigned) {
+              const autoBadge = document.createElement("span");
+              autoBadge.className = "relay-ai-badge relay-ai-badge-recommended";
+              autoBadge.style.background = "rgba(56, 139, 253, 0.2)";
+              autoBadge.style.color = "#58a6ff";
+              autoBadge.style.borderColor = "rgba(56, 139, 253, 0.4)";
+              autoBadge.textContent = "⚡ Auto-Assigned (Automatic Policy)";
+              topHeader.append(autoBadge);
+            } else if (issue._heldForReview) {
+              const holdBadge = document.createElement("span");
+              holdBadge.className = "relay-ai-badge relay-ai-badge-warning";
+              holdBadge.textContent = `⏸ Held for PM Review (${issue._heldReason || 'Low confidence'})`;
+              topHeader.append(holdBadge);
+            }
 
             topHeader.append(recBadge, topUser, topScoreBadge);
 
@@ -1112,6 +1174,49 @@
 
           card.append(assignmentSec);
 
+          // Pre-execution preview details: task, chosen developer, reason, workload warning, intended GitHub change
+          if (chosen) {
+            const previewBox = document.createElement("div");
+            previewBox.className = "relay-ai-assignment-preview";
+            previewBox.style.margin = "6px 0 10px 0";
+            previewBox.style.padding = "6px 10px";
+            previewBox.style.background = "rgba(22, 27, 34, 0.75)";
+            previewBox.style.border = "1px solid rgba(126, 168, 222, 0.2)";
+            previewBox.style.borderRadius = "6px";
+            previewBox.style.fontSize = "11px";
+
+            const previewTitle = document.createElement("div");
+            previewTitle.style.fontWeight = "600";
+            previewTitle.style.color = "#7ea8de";
+            previewTitle.style.marginBottom = "3px";
+            previewTitle.textContent = "Assignment Execution Preview:";
+
+            const matchedCandidate = (issue._recommendations || []).find(r => r.githubUsername === chosen);
+            const candReason = matchedCandidate?.rationale || "PM selected candidate.";
+            const isCandOverloaded = matchedCandidate?.isOverloaded || (matchedCandidate?.criteria?.workloadAndEffort?.score <= 15);
+
+            const details = document.createElement("div");
+            details.style.color = "#edf4ff";
+            details.textContent = `Task: ${issue.title || 'Untitled'} | Intended Assignee: @${chosen} | Change: Assign on GitHub issue creation`;
+
+            const reasonEl = document.createElement("div");
+            reasonEl.style.color = "#9cb3d8";
+            reasonEl.style.marginTop = "2px";
+            reasonEl.textContent = `Reason: ${candReason}`;
+
+            previewBox.append(previewTitle, details, reasonEl);
+
+            if (isCandOverloaded) {
+              const wlWarn = document.createElement("div");
+              wlWarn.style.color = "#ff7b72";
+              wlWarn.style.marginTop = "2px";
+              wlWarn.textContent = `⚠ Workload Warning: @${chosen} is currently overloaded or over capacity.`;
+              previewBox.append(wlWarn);
+            }
+
+            card.append(previewBox);
+          }
+
           // Individual Card Action Bar
           const cardActions = document.createElement("div");
           cardActions.className = "relay-ai-issue-card-actions";
@@ -1221,6 +1326,15 @@
                   issue._creating = false;
                   issue._createdNumber = result.number;
                   issue._createdUrl = result.url;
+                  if (result.assignment) {
+                    if (result.assignment.assigned) {
+                      issue._assignedUser = (result.assignment.assignees && result.assignment.assignees[0]) || (issue.assignees && issue.assignees[0]) || issue.assignee;
+                    } else if (result.assignment.warning) {
+                      issue._assignmentWarning = result.assignment.warning;
+                    }
+                  } else if (result.assignees && result.assignees.length > 0) {
+                    issue._assignedUser = result.assignees[0];
+                  }
                   if (typeof saveConversation === "function") saveConversation();
                   updateBulkControls();
                   refreshCard();
@@ -1296,6 +1410,15 @@
                 matched._created = true;
                 matched._createdNumber = result.number;
                 matched._createdUrl = result.url;
+                if (result.assignment) {
+                  if (result.assignment.assigned) {
+                    matched._assignedUser = (result.assignment.assignees && result.assignment.assignees[0]) || (matched.assignees && matched.assignees[0]) || matched.assignee;
+                  } else if (result.assignment.warning) {
+                    matched._assignmentWarning = result.assignment.warning;
+                  }
+                } else if (result.assignees && result.assignees.length > 0) {
+                  matched._assignedUser = result.assignees[0];
+                }
               }
             }
           }
@@ -2832,6 +2955,189 @@
       if (ui["gear-menu"]) ui["gear-menu"].classList.add("hidden");
       if (ui["gear"]) ui["gear"].classList.remove("active");
       openProfileModal(currentContext);
+    });
+  }
+
+  // Assignment Policy Settings
+  if (ui["gear-policy"]) {
+    ui["gear-policy"].addEventListener("click", () => {
+      if (ui["gear-menu"]) ui["gear-menu"].classList.add("hidden");
+      if (ui["gear"]) ui["gear"].classList.remove("active");
+      openAssignmentPolicyModal(currentContext);
+    });
+  }
+
+  function openAssignmentPolicyModal(context) {
+    const overlay = document.createElement("div");
+    overlay.className = "relay-ai-profile-modal-overlay";
+
+    const modal = document.createElement("div");
+    modal.className = "relay-ai-profile-modal";
+
+    const mTitle = document.createElement("h4");
+    mTitle.textContent = "Automatic Assignment Policy";
+
+    const form = document.createElement("div");
+    form.className = "relay-ai-issue-edit-form";
+
+    // Assignment Mode selector
+    const modeRow = document.createElement("div");
+    modeRow.className = "relay-ai-issue-edit-label-row";
+    const modeLabel = document.createElement("span");
+    modeLabel.className = "relay-ai-issue-edit-label-text";
+    modeLabel.textContent = "Assignment Mode";
+    const modeSelect = document.createElement("select");
+    modeSelect.className = "relay-ai-issue-edit-input";
+    const optRec = document.createElement("option");
+    optRec.value = "recommendation";
+    optRec.textContent = "Recommendation Mode (Advisory - PM Review required)";
+    const optAuto = document.createElement("option");
+    optAuto.value = "automatic";
+    optAuto.textContent = "Automatic Mode (Safe auto-assignment when criteria met)";
+    modeSelect.append(optRec, optAuto);
+    modeRow.append(modeLabel, modeSelect);
+
+    // Confidence Threshold
+    const confRow = document.createElement("div");
+    confRow.className = "relay-ai-issue-edit-label-row";
+    const confLabel = document.createElement("span");
+    confLabel.className = "relay-ai-issue-edit-label-text";
+    confLabel.textContent = "Min Confidence Fit Score (0 - 100)";
+    const confInput = document.createElement("input");
+    confInput.type = "number";
+    confInput.className = "relay-ai-issue-edit-input";
+    confInput.value = "70";
+    confInput.min = "0";
+    confInput.max = "100";
+    confRow.append(confLabel, confInput);
+
+    // Safeguards checkboxes
+    const capRow = document.createElement("div");
+    capRow.className = "relay-ai-issue-edit-label-row";
+    const capLabel = document.createElement("label");
+    capLabel.style.display = "flex";
+    capLabel.style.alignItems = "center";
+    capLabel.style.gap = "8px";
+    capLabel.style.cursor = "pointer";
+    const capCheck = document.createElement("input");
+    capCheck.type = "checkbox";
+    capCheck.checked = true;
+    const capText = document.createElement("span");
+    capText.textContent = "Enforce workload & capacity limits (Hold overloaded devs)";
+    capLabel.append(capCheck, capText);
+    capRow.append(capLabel);
+
+    const growthRow = document.createElement("div");
+    growthRow.className = "relay-ai-issue-edit-label-row";
+    const growthLabel = document.createElement("label");
+    growthLabel.style.display = "flex";
+    growthLabel.style.alignItems = "center";
+    growthLabel.style.gap = "8px";
+    growthLabel.style.cursor = "pointer";
+    const growthCheck = document.createElement("input");
+    growthCheck.type = "checkbox";
+    growthCheck.checked = true;
+    const growthText = document.createElement("span");
+    growthText.textContent = "Allow growth & fairness rotation on low-risk tasks";
+    growthLabel.append(growthCheck, growthText);
+    growthRow.append(growthLabel);
+
+    // Policy helper info text
+    const infoText = document.createElement("p");
+    infoText.style.fontSize = "11px";
+    infoText.style.color = "#9cb3d8";
+    infoText.style.margin = "4px 0";
+    infoText.textContent = "Automatic mode executes assignments only when candidates meet the confidence threshold and capacity limits. Low-confidence, overloaded, or unverified candidates are always held for PM review.";
+
+    const statusSpan = document.createElement("div");
+    statusSpan.className = "relay-ai-issue-card-status";
+    statusSpan.style.marginTop = "4px";
+
+    const modalActions = document.createElement("div");
+    modalActions.className = "relay-ai-issue-edit-actions";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "relay-ai-btn relay-ai-btn-secondary relay-ai-btn-sm";
+    cancelBtn.textContent = "Cancel";
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "relay-ai-btn relay-ai-btn-primary relay-ai-btn-sm";
+    saveBtn.textContent = "Save Policy";
+
+    modalActions.append(cancelBtn, saveBtn);
+    form.append(modeRow, confRow, capRow, growthRow, infoText, statusSpan, modalActions);
+    modal.append(mTitle, form);
+    overlay.append(modal);
+    document.body.append(overlay);
+
+    cancelBtn.addEventListener("click", () => overlay.remove());
+
+    const effectiveModalContext = context || currentContext;
+    if (RelayAIAssistant?.getAssignmentPolicy && effectiveModalContext?.owner && effectiveModalContext?.repository) {
+      statusSpan.className = "relay-ai-issue-card-status";
+      statusSpan.textContent = "Loading project assignment policy...";
+      RelayAIAssistant.getAssignmentPolicy(effectiveModalContext).then(async (res) => {
+        let data = null;
+        try { data = await res.json(); } catch (_) {}
+        if (res.ok && data?.policy) {
+          const pol = data.policy;
+          modeSelect.value = pol.mode || "recommendation";
+          if (pol.min_confidence_score != null) confInput.value = String(pol.min_confidence_score);
+          capCheck.checked = pol.enforce_capacity_limits !== false;
+          growthCheck.checked = pol.allow_growth_allocation !== false;
+          statusSpan.className = "relay-ai-issue-card-status relay-ai-issue-card-status-success";
+          statusSpan.textContent = "Policy loaded.";
+        } else {
+          statusSpan.className = "relay-ai-issue-card-status";
+          statusSpan.textContent = "Default policy active (Recommendation mode).";
+        }
+      }).catch((err) => {
+        statusSpan.className = "relay-ai-issue-card-status relay-ai-issue-card-status-error";
+        statusSpan.textContent = `Could not connect to policy service: ${err.message || 'error'}`;
+      });
+    }
+
+    saveBtn.addEventListener("click", async () => {
+      saveBtn.disabled = true;
+      statusSpan.className = "relay-ai-issue-card-status";
+      statusSpan.textContent = "Saving policy...";
+
+      const policyData = {
+        mode: modeSelect.value,
+        minConfidenceScore: parseInt(confInput.value, 10) || 70,
+        enforceCapacityLimits: capCheck.checked,
+        allowGrowthAllocation: growthCheck.checked
+      };
+
+      try {
+        const res = await RelayAIAssistant.updateAssignmentPolicy(policyData, effectiveModalContext);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `Failed to save policy (HTTP ${res.status})`);
+
+        statusSpan.className = "relay-ai-issue-card-status relay-ai-issue-card-status-success";
+        statusSpan.textContent = "Assignment policy saved successfully!";
+
+        // Invalidate cached recommendations on open issue plans so new policy takes effect
+        for (const msg of state.messages) {
+          if (msg.issuePlan?.issues) {
+            for (const issue of msg.issuePlan.issues) {
+              delete issue._recommendations;
+              delete issue._recommendationWarnings;
+            }
+          }
+        }
+        renderConversation(true);
+
+        setTimeout(() => {
+          overlay.remove();
+        }, 800);
+      } catch (err) {
+        saveBtn.disabled = false;
+        statusSpan.className = "relay-ai-issue-card-status relay-ai-issue-card-status-error";
+        statusSpan.textContent = err.message || "Failed to update policy";
+      }
     });
   }
 

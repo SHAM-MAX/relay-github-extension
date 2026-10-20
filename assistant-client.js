@@ -312,6 +312,64 @@
     });
   }
 
+  async function getAssignmentPolicy(context, options = {}) {
+    const fetchImpl = options.fetchImpl || fetch;
+    const owner = encodeURIComponent(context?.owner || '');
+    const repo = encodeURIComponent(context?.repository || '');
+    const url = ENDPOINT.replace('/assistant', `/pm/assignment/policy?owner=${owner}&repo=${repo}`);
+    const headers = { 'Accept': 'application/json', ...(options.headers || {}) };
+    const cookie = await getSessionCookie();
+    if (cookie?.value && !headers['Cookie'] && !headers['cookie']) {
+      headers['Cookie'] = `relay_pm_session=${cookie.value}`;
+    }
+    return await fetchImpl(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers
+    });
+  }
+
+  async function updateAssignmentPolicy(policyData, context, options = {}) {
+    const fetchImpl = options.fetchImpl || fetch;
+    const owner = encodeURIComponent(context?.owner || '');
+    const repo = encodeURIComponent(context?.repository || '');
+    const url = ENDPOINT.replace('/assistant', `/pm/assignment/policy?owner=${owner}&repo=${repo}`);
+    const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const cookie = await getSessionCookie();
+    if (cookie?.value && !headers['Cookie'] && !headers['cookie']) {
+      headers['Cookie'] = `relay_pm_session=${cookie.value}`;
+    }
+    return await fetchImpl(url, {
+      method: 'PUT',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify(policyData)
+    });
+  }
+
+  async function assignIssue(issueNumber, assignee, context, options = {}) {
+    const fetchImpl = options.fetchImpl || fetch;
+    const owner = encodeURIComponent(context?.owner || '');
+    const repo = encodeURIComponent(context?.repository || '');
+    const url = ENDPOINT.replace('/assistant', `/pm/assignment/assign?owner=${owner}&repo=${repo}`);
+    const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const cookie = await getSessionCookie();
+    if (cookie?.value && !headers['Cookie'] && !headers['cookie']) {
+      headers['Cookie'] = `relay_pm_session=${cookie.value}`;
+    }
+    return await fetchImpl(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({
+        issueNumber,
+        assignee,
+        mode: options.mode || 'manual_approval',
+        isOverride: Boolean(options.isOverride)
+      })
+    });
+  }
+
   const api = Object.freeze({
     send,
     connectionURL,
@@ -324,6 +382,9 @@
     getAssignmentRecommendations,
     getDeveloperProfile,
     upsertDeveloperProfile,
+    getAssignmentPolicy,
+    updateAssignmentPolicy,
+    assignIssue,
     getProjectHealth,
     getTraceability,
     getPmReports
